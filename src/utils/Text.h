@@ -11,7 +11,7 @@
 
 using string = std::string;
 
-namespace plo::utils {
+namespace fm::utils {
 
 enum class Level : int { Normal = -1, Debug = 0, Info = 1, Warn = 2, Error = 3, Fatal = 4, Success = 5 };
 

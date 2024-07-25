@@ -5,7 +5,7 @@
 
 using string = std::string;
 
-namespace plo::utils {
+namespace fm::utils {
 
 enum class MoneysType : int { Unknown = -1, LLMoney = 0, ScoreBoard = 1 };
 

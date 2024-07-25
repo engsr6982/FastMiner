@@ -1,8 +1,10 @@
 #pragma once
 #include "ll/api/Config.h"
+#include "utils/Moneys.h"
 #include <sys/stat.h>
 #include <unordered_map>
 #include <vector>
+
 
 using string = std::string;
 
@@ -49,6 +51,8 @@ using Blocks = std::unordered_map<string, BlockItem>;
 
 struct Config {
     int version = 1;
+
+    utils::MoneysConfig moneys; // 经济
 
     // clang-format off
     Blocks blocks  = {
