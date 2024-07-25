@@ -2,5 +2,10 @@
     "name": "${modName}",
     "entry": "${modFile}",
     "version": "${modVersion}",
-    "type": "native"
+    "type": "native",
+    "dependencies": [
+        {
+            "name": "LegacyMoney"
+        }
+    ]
 }

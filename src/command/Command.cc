@@ -103,32 +103,34 @@ void registerCommand() {
     });
 
     // fm <on/off> [player]
-    cmd.overload<StatusOption>().execute([](CommandOrigin const& ori, CommandOutput& out, StatusOption const& opt) {
-        auto pls = opt.player.results(ori);
+    cmd.overload<StatusOption>().required("state").optional("player").execute(
+        [](CommandOrigin const& ori, CommandOutput& out, StatusOption const& opt) {
+            auto pls = opt.player.results(ori);
 
-        auto       oriType   = ori.getOriginType();
-        bool const isConsole = oriType == CommandOriginType::DedicatedServer;
-        bool const isPlayer  = oriType == CommandOriginType::Player;
+            auto       oriType   = ori.getOriginType();
+            bool const isConsole = oriType == CommandOriginType::DedicatedServer;
+            bool const isPlayer  = oriType == CommandOriginType::Player;
 
-        if (isPlayer) {
-            Player& pl = *static_cast<Player*>(ori.getEntity());
-            if (pls.empty()) {
-                ConfImpl::setEnable(pl.getUuid().asString(), "enable", (bool)opt.state);
-                utils::sendText(pl, "设置已保存");
-                return;
+            if (isPlayer) {
+                Player& pl = *static_cast<Player*>(ori.getEntity());
+                if (pls.empty()) {
+                    ConfImpl::setEnable(pl.getUuid().asString(), "enable", (bool)opt.state);
+                    utils::sendText(pl, "设置已保存");
+                    return;
+                }
+
+                if (!pl.isOperator()) return;
             }
 
-            if (!pl.isOperator()) return;
+            if (!isConsole || !isPlayer || pls.empty()) return;
+
+            for (auto pl : *pls.data) {
+                if (pl != nullptr) ConfImpl::setEnable(pl->getUuid().asString(), "enable", (bool)opt.state);
+            }
+
+            utils::sendText(out, "设置已保存");
         }
-
-        if (!isConsole || !isPlayer || pls.empty()) return;
-
-        for (auto pl : *pls.data) {
-            if (pl != nullptr) ConfImpl::setEnable(pl->getUuid().asString(), "enable", (bool)opt.state);
-        }
-
-        utils::sendText(out, "设置已保存");
-    });
+    );
 }
 
 
