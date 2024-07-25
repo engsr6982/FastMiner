@@ -5,7 +5,7 @@ add_repositories("liteldev-repo https://github.com/LiteLDev/xmake-repo.git")
 -- add_requires("levilamina x.x.x") for a specific version
 -- add_requires("levilamina develop") to use develop version
 -- please note that you should add bdslibrary yourself if using dev version
-add_requires("levilamina 0.13.4")
+add_requires("levilamina 0.13.4", "legacymoney 0.8.2")
 
 if not has_config("vs_runtime") then
     set_runtimes("MD")
@@ -23,10 +23,10 @@ target("FastMiner") -- Change this to your mod name.
         "/w44738",
         "/w45204"
     )
-    add_defines("NOMINMAX", "UNICODE")
+    add_defines("NOMINMAX", "UNICODE", "PLUGIN_TITLE=\"FastMiner\"")
     add_files("src/**.cc")
     add_includedirs("src")
-    add_packages("levilamina")
+    add_packages("levilamina", "legacymoney")
     add_shflags("/DELAYLOAD:bedrock_server.dll") -- To use symbols provided by SymbolProvider.
     set_exceptions("none") -- To avoid conflicts with /EHa.
     set_kind("shared")
