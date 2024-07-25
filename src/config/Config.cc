@@ -15,7 +15,7 @@ namespace fs = std::filesystem;
 
 
 Config                                                       ConfImpl::cfg{};
-std::unordered_map<string, std::unordered_map<string, bool>> ConfImpl::disabledBlocks{};
+std::unordered_map<string, std::unordered_map<string, bool>> ConfImpl::playerSetting{};
 
 void ConfImpl::load() {
     auto path = Mod::getInstance().getSelf().getModDir() / "Config.json";
@@ -36,12 +36,12 @@ void ConfImpl::save() {
 }
 
 
-void ConfImpl::loadDisabledBlocks() {
+void ConfImpl::loadPlayerSetting() {
     auto& mod    = Mod::getInstance().getSelf();
     auto& logger = mod.getLogger();
     auto  path   = mod.getModDir() / "PlayerSetting.json";
     if (!fs::exists(path)) {
-        saveDisabledBlocks();
+        savePlayerSetting();
     }
 
     try {
@@ -49,11 +49,11 @@ void ConfImpl::loadDisabledBlocks() {
         auto j = JSON::parse(a);
 
         for (auto& [uuid, obj] : j.items()) {
-            if (disabledBlocks.find(uuid) == disabledBlocks.end()) {
-                disabledBlocks[uuid] = std::unordered_map<string, bool>{}; // init
+            if (playerSetting.find(uuid) == playerSetting.end()) {
+                playerSetting[uuid] = std::unordered_map<string, bool>{}; // init
             }
             for (auto& [type, bol] : obj.items()) {
-                disabledBlocks[uuid][type] = bol;
+                playerSetting[uuid][type] = bol;
             }
         }
     } catch (JSON::exception& err) {
@@ -62,13 +62,13 @@ void ConfImpl::loadDisabledBlocks() {
         logger.error("Failed to load PlayerSetting.json: {}", serr.what());
     }
 }
-void ConfImpl::saveDisabledBlocks() {
+void ConfImpl::savePlayerSetting() {
     auto& mod    = Mod::getInstance().getSelf();
     auto& logger = mod.getLogger();
     auto  path   = mod.getModDir() / "PlayerSetting.json";
     try {
         JSON j;
-        for (auto& [uuid, map] : disabledBlocks) {
+        for (auto& [uuid, map] : playerSetting) {
             JSON obj;
             for (auto& [type, bol] : map) {
                 obj[type] = bol;
@@ -83,14 +83,14 @@ void ConfImpl::saveDisabledBlocks() {
     }
 }
 
-void ConfImpl::saveDisabledBlockOnNewThread() {
-    std::thread([]() { ConfImpl::saveDisabledBlocks(); }).detach();
+void ConfImpl::savePlayerSettingOnNewThread() {
+    std::thread([]() { ConfImpl::savePlayerSetting(); }).detach();
 }
 
 
-bool ConfImpl::isBlockDisabled(const string& uuid, const string& typeName) {
-    auto fn = disabledBlocks.find(uuid);
-    if (fn != disabledBlocks.end()) {
+bool ConfImpl::isEnable(const string& uuid, const string& typeName) {
+    auto fn = playerSetting.find(uuid);
+    if (fn != playerSetting.end()) {
         auto dt = fn->second.find(typeName);
         if (dt != fn->second.end()) {
             return dt->second;
@@ -98,22 +98,31 @@ bool ConfImpl::isBlockDisabled(const string& uuid, const string& typeName) {
     }
     return false;
 }
-bool ConfImpl::disableBlock(const string& uuid, const string& typeName) {
-    auto fn = disabledBlocks.find(uuid);
-    if (fn == disabledBlocks.end()) {
-        disabledBlocks[string(uuid)] = std::unordered_map<string, bool>{};
+bool ConfImpl::disable(const string& uuid, const string& typeName) {
+    auto fn = playerSetting.find(uuid);
+    if (fn == playerSetting.end()) {
+        playerSetting[string(uuid)] = std::unordered_map<string, bool>{};
     }
-    disabledBlocks[uuid][typeName] = true;
-    saveDisabledBlockOnNewThread();
+    playerSetting[uuid][string(typeName)] = false;
+    savePlayerSettingOnNewThread();
     return true;
 }
-bool ConfImpl::enableBlock(const string& uuid, const string& typeName) {
-    auto fn = disabledBlocks.find(uuid);
-    if (fn == disabledBlocks.end()) {
-        disabledBlocks[string(uuid)] = std::unordered_map<string, bool>{};
+bool ConfImpl::enable(const string& uuid, const string& typeName) {
+    auto fn = playerSetting.find(uuid);
+    if (fn == playerSetting.end()) {
+        playerSetting[string(uuid)] = std::unordered_map<string, bool>{};
     }
-    disabledBlocks[uuid][typeName] = false;
-    saveDisabledBlockOnNewThread();
+    playerSetting[uuid][string(typeName)] = true;
+    savePlayerSettingOnNewThread();
+    return true;
+}
+bool ConfImpl::setEnable(const string& uuid, const string& typeName, bool isEnable) {
+    auto fn = playerSetting.find(uuid);
+    if (fn == playerSetting.end()) {
+        playerSetting[string(uuid)] = std::unordered_map<string, bool>{};
+    }
+    playerSetting[uuid][string(typeName)] = isEnable;
+    savePlayerSettingOnNewThread();
     return true;
 }
 

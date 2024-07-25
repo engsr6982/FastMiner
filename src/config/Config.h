@@ -26,10 +26,9 @@ using Tools        = std::vector<string>; // 工具
 using SimilarBlock = std::vector<string>; // 类似方块
 
 struct BlockItem {
-    string name;        // 名称
-    string texture{""}; // 贴图
-    int    cost{0};     // 经济
-    int    limit{128};  // 上限
+    string name;       // 名称
+    int    cost{0};    // 经济
+    int    limit{128}; // 上限
 
     DestroyMod    destroyMod{DestroyMod::Default};       // 破坏方式
     SilkTouschMod silkTouschMod{SilkTouschMod::Disable}; // 精准采集
@@ -58,7 +57,6 @@ struct Config {
     Blocks blocks  = {
         {"minecraft:acacia_log", {
             "金合欢木原木",
-            "textures/blocks/log_acacia_top",
             0,
             128,
             DestroyMod::Cube,
@@ -66,12 +64,10 @@ struct Config {
             DefaultWoodBlockTools
         }},
         {"minecraft:ancient_debris", {
-            "远古残骸",
-            "textures/blocks/ancient_debris_top"
+            "远古残骸"
         }},
         {"minecraft:birch_log", {
             "白桦木原木",
-            "textures/blocks/log_birch_top",
             0,
             128,
             DestroyMod::Default,
@@ -80,7 +76,6 @@ struct Config {
         }},
         {"minecraft:cherry_log", {
             "樱花原木",
-            "textures/blocks/cherry_log_top",
             0,
             128,
             DestroyMod::Default,
@@ -89,7 +84,6 @@ struct Config {
         }},
         {"minecraft:coal_ore", {
             "煤矿石",
-            {},
             {},
             128,
             {},
@@ -102,7 +96,6 @@ struct Config {
         {"minecraft:copper_ore", {
             "铜矿石",
             {},
-            {},
             128,
             {},
             {},
@@ -113,7 +106,6 @@ struct Config {
         }},
         {"minecraft:crimson_stem", {
             "绯红菌柄",
-            "textures/blocks/huge_fungus/stripped_crimson_stem_top",
             {},
             128,
             {},
@@ -122,7 +114,6 @@ struct Config {
         }},
         {"minecraft:dark_oak_log", {
             "深色橡木原木",
-            "textures/blocks/log_big_oak_top",
             {},
             128,
             {},
@@ -131,7 +122,6 @@ struct Config {
         }},
         {"minecraft:deepslate_coal_ore", {
             "深层煤矿石",
-            "textures/blocks/deepslate/deepslate_coal_ore",
             {},
             128,
             {},
@@ -143,7 +133,6 @@ struct Config {
         }},
         {"minecraft:deepslate_copper_ore", {
             "深层铜矿石",
-            "textures/blocks/deepslate/deepslate_copper_ore",
             {},
             128,
             {},
@@ -155,7 +144,6 @@ struct Config {
         }},
         {"minecraft:deepslate_diamond_ore", {
             "深层钻石矿石",
-            "textures/blocks/deepslate/deepslate_diamond_ore",
             {},
             128,
             {},
@@ -167,7 +155,6 @@ struct Config {
         }},
         {"minecraft:deepslate_emerald_ore", {
             "深层绿宝石矿石",
-            "textures/blocks/deepslate/deepslate_emerald_ore",
             {},
             128,
             {},
@@ -179,7 +166,6 @@ struct Config {
         }},
         {"minecraft:deepslate_gold_ore", {
             "深层金矿石",
-            "textures/blocks/deepslate/deepslate_gold_ore",
             {},
             128,
             {},
@@ -191,7 +177,6 @@ struct Config {
         }},
         {"minecraft:deepslate_iron_ore", {
             "深层铁矿石",
-            "textures/blocks/deepslate/deepslate_iron_ore",
             {},
             128,
             {},
@@ -203,7 +188,6 @@ struct Config {
         }},
         {"minecraft:deepslate_lapis_ore", {
             "深层青金石矿石",
-            "textures/blocks/deepslate/deepslate_lapis_ore",
             {},
             128,
             {},
@@ -215,7 +199,6 @@ struct Config {
         }},
         {"minecraft:diamond_ore", {
             "钻石矿石",
-            "",
             {},
             128,
             {},
@@ -227,7 +210,6 @@ struct Config {
         }},
         {"minecraft:emerald_ore", {
             "绿宝石矿石",
-            "",
             {},
             128,
             {},
@@ -239,7 +221,6 @@ struct Config {
         }},
         {"minecraft:gold_ore", {
             "金矿石",
-            "",
             {},
             128,
             {},
@@ -251,7 +232,6 @@ struct Config {
         }},
         {"minecraft:iron_ore", {
             "铁矿石",
-            "",
             {},
             128,
             {},
@@ -263,7 +243,6 @@ struct Config {
         }},
         {"minecraft:jungle_log", {
             "云杉木原木",
-            "textures/blocks/log_jungle_top",
             {},
             128,
             {},
@@ -272,7 +251,6 @@ struct Config {
         }},
         {"minecraft:lapis_ore", {
             "青金石矿石",
-            "",
             {},
             128,
             {},
@@ -284,7 +262,6 @@ struct Config {
         }},
         {"minecraft:lit_deepslate_redstone_ore", {
             "深层红石矿石",
-            "textures/blocks/deepslate/deepslate_redstone_ore",
             {},
             128,
             {},
@@ -298,8 +275,6 @@ struct Config {
         }},
         {"minecraft:lit_redstone_ore", {
             "红石矿石",
-            "textures/blocks/redstone_ore",
-            {},
             128,
             {},
             {},
@@ -312,7 +287,6 @@ struct Config {
         }},
         {"minecraft:mangrove_log", {
             "红树原木",
-            "textures/blocks/mangrove_log_top",
             {},
             128,
             {},
@@ -324,7 +298,6 @@ struct Config {
         }},
         {"minecraft:oak_log", {
             "橡木原木",
-            "textures/blocks/log_oak_top",
             {},
             128,
             {},
@@ -336,7 +309,6 @@ struct Config {
         }},
         {"minecraft:spruce_log", {
             "云杉木原木",
-            "textures/blocks/log_spruce_top",
             {},
             128,
             {},
@@ -345,7 +317,6 @@ struct Config {
         }},
         {"minecraft:warped_stem", {
             "诡异菌柄",
-            "textures/blocks/huge_fungus/stripped_warped_stem_top",
             {},
             128,
             {},
@@ -366,19 +337,20 @@ public:
 
 
     static Config                                                       cfg;
-    static std::unordered_map<string, std::unordered_map<string, bool>> disabledBlocks;
+    static std::unordered_map<string, std::unordered_map<string, bool>> playerSetting;
 
     static void load();
     static void save();
 
-    static void loadDisabledBlocks();
-    static void saveDisabledBlocks();
-    static void saveDisabledBlockOnNewThread();
+    static void loadPlayerSetting();
+    static void savePlayerSetting();
+    static void savePlayerSettingOnNewThread();
 
     // 玩家自定义配置
-    static bool disableBlock(string const& uuid, string const& typeName);
-    static bool enableBlock(string const& uuid, string const& typeName);
-    static bool isBlockDisabled(string const& uuid, string const& typeName);
+    static bool disable(string const& uuid, string const& typeName);
+    static bool enable(string const& uuid, string const& typeName);
+    static bool isEnable(string const& uuid, string const& typeName);
+    static bool setEnable(string const& uuid, string const& typeName, bool isEnable);
 };
 
 

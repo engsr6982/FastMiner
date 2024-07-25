@@ -16,7 +16,7 @@ bool Mod::load() {
     getSelf().getLogger().info("Loading...");
 
     config::ConfImpl::load();
-    config::ConfImpl::loadDisabledBlocks();
+    config::ConfImpl::loadPlayerSetting();
 
     return true;
 }
