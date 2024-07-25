@@ -2,6 +2,7 @@
 
 #include <memory>
 
+#include "command/Command.h"
 #include "config/Config.h"
 #include "ll/api/mod/RegisterHelper.h"
 
@@ -18,12 +19,16 @@ bool Mod::load() {
     config::ConfImpl::load();
     config::ConfImpl::loadPlayerSetting();
 
+    utils::Moneys::getInstance().updateConfig(config::ConfImpl::cfg.moneys);
+
     return true;
 }
 
 bool Mod::enable() {
     getSelf().getLogger().info("Enabling...");
-    // Code for enabling the plugin goes here.
+
+    command::registerCommand();
+
     return true;
 }
 
