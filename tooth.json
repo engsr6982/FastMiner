@@ -1,17 +1,17 @@
 {
     "format_version": 2,
     "tooth": "github.com/engsr6982/FastMiner",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "info": {
         "name": "FastMiner",
-        "description": "连锁采集",
+        "description": "高性能连锁采集",
         "author": "engsr6982",
         "tags": [
             "levilamina",
             "mod"
         ]
     },
-    "asset_url": "https://github.com/engsr6982/FastMiner/releases/download/v0.1.0/FastMiner-windows-x64.zip",
+    "asset_url": "https://github.com/engsr6982/FastMiner/releases/download/v0.2.0/FastMiner-windows-x64.zip",
     "prerequisites": {
         "github.com/LiteLDev/LeviLamina": "0.13.4"
     },

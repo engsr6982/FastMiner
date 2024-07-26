@@ -2,7 +2,7 @@ on:
   release:
     types:
       - published
-  
+
 jobs:
   build:
     runs-on: windows-latest
@@ -67,7 +67,7 @@ jobs:
           path: artifact
 
       - run: |
-          cp CHANGELOG.md LICENSE README.md artifact/
+          cp CHANGELOG.md README.md artifact/
 
       - run: |
           zip -r ../${{ github.event.repository.name }}-windows-x64.zip *
