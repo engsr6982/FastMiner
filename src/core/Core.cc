@@ -198,6 +198,7 @@ void core::miner(const int& taskID, const BlockPos stratPos) {
 
         std::queue<std::pair<const Block*, BlockPos>> mQueue;    // 队列
         std::unordered_set<size_t>                    mSeracted; // 已搜索的方块
+        std::unordered_set<size_t>                    mQueued;   // 已加入队列的方块
 
         BlockSource& bs  = task.mPlayer->getDimensionBlockSource();
         auto&        bus = ll::event::EventBus::getInstance();
@@ -207,28 +208,16 @@ void core::miner(const int& taskID, const BlockPos stratPos) {
         while (task.mCount < task.mLimit && !mQueue.empty()) {
             auto& [block, pos] = mQueue.front();
 
-            // BFS 搜索
-            for (auto& [x, y, z] : dirs) {
-                BlockPos     nextPos = BlockPos(pos.x + x, pos.y + y, pos.z + z);
-                size_t const hashed  = hash(nextPos, task.mDimension);
-
-                if (mSeracted.contains(hashed)) continue;
-                const Block*  nextBlock    = &bs.getBlock(nextPos);
-                string const& nextTypeName = nextBlock->getTypeName();
-
-                if (task.mBlockTypeName == nextTypeName || some(confBlock.similarBlock, nextTypeName)) {
-                    mQueue.push({nextBlock, nextPos}); // 插入队列
-                } else mSeracted.insert(hashed);       // 标记已搜索
-            }
+            size_t const curHashed = hash(pos, task.mDimension);
 
             // 处理
             if (!block->isAir()) {
-                auto       ev     = ll::event::player::PlayerDestroyBlockEvent(*task.mPlayer, pos);
-                auto const hashed = hash(ev);
+                mRuningBlock.insert(curHashed);
 
-                mRuningBlock.insert(hashed);
+                auto ev = ll::event::player::PlayerDestroyBlockEvent(*task.mPlayer, pos);
                 bus.publish(ev);
-                mRuningBlock.erase(hashed);
+
+                mRuningBlock.erase(curHashed);
 
                 if (!ev.isCancelled()) {
                     block->playerDestroy(*task.mPlayer, pos);
@@ -239,8 +228,27 @@ void core::miner(const int& taskID, const BlockPos stratPos) {
                         task.mDeductDamage++;
                     }
                 }
-                mSeracted.insert(hashed); // 标记为已搜索
             }
+            mSeracted.insert(curHashed); // 标记为已搜索
+
+
+            // BFS 搜索
+            for (auto& [x, y, z] : dirs) {
+                BlockPos     nextPos = BlockPos(pos.x + x, pos.y + y, pos.z + z);
+                size_t const hashed  = hash(nextPos, task.mDimension);
+
+                if (mSeracted.contains(hashed) || mQueued.contains(hashed))
+                    continue; // 如果已经搜索过或已在队列中，跳过
+
+                const Block*  nextBlock    = &bs.getBlock(nextPos);
+                string const& nextTypeName = nextBlock->getTypeName();
+
+                if (task.mBlockTypeName == nextTypeName || some(confBlock.similarBlock, nextTypeName)) {
+                    mQueue.push({nextBlock, nextPos}); // 插入队列
+                    mQueued.insert(hashed);            // 标记为已加入队列
+                }
+            }
+
             mQueue.pop(); // 出队
         }
 
