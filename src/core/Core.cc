@@ -196,22 +196,28 @@ void core::miner(const int& taskID, const BlockPos stratPos) {
 
         auto& dirs = confBlock.destroyMod == DestroyMod::Cube ? _dirCube : _dirDefault;
 
-        std::queue<std::pair<const Block*, BlockPos>> mQueue;    // 队列
-        std::unordered_set<size_t>                    mSeracted; // 已搜索的方块
-        std::unordered_set<size_t>                    mQueued;   // 已加入队列的方块
-
         BlockSource& bs  = task.mPlayer->getDimensionBlockSource();
         auto&        bus = ll::event::EventBus::getInstance();
 
-        mQueue.push({&bs.getBlock(stratPos), stratPos}); // 插入队列
+        std::vector<std::pair<const Block*, BlockPos>> mQueue;
+        std::unordered_set<size_t>                     mVisited;
 
-        while (task.mCount < task.mLimit && !mQueue.empty()) {
-            auto& [block, pos] = mQueue.front();
+        mQueue.reserve(task.mLimit); // 预分配空间
+        mVisited.reserve(task.mLimit * 2);
 
-            size_t const curHashed = hash(pos, task.mDimension);
+        size_t startHash = hash(stratPos, task.mDimension);
+        mQueue.emplace_back(&bs.getBlock(stratPos), stratPos);
+        mVisited.insert(startHash);
+
+
+        auto   start      = std::chrono::high_resolution_clock::now();
+        size_t queueIndex = 0;
+        while (task.mCount < task.mLimit && queueIndex < mQueue.size()) {
+            auto& [block, pos] = mQueue[queueIndex++];
 
             // 处理
             if (!block->isAir()) {
+                auto const curHashed = hash(pos, task.mDimension);
                 mRuningBlock.insert(curHashed);
 
                 auto ev = ll::event::player::PlayerDestroyBlockEvent(*task.mPlayer, pos);
@@ -229,31 +235,28 @@ void core::miner(const int& taskID, const BlockPos stratPos) {
                     }
                 }
             }
-            mSeracted.insert(curHashed); // 标记为已搜索
-
 
             // BFS 搜索
             for (auto& [x, y, z] : dirs) {
-                BlockPos     nextPos = BlockPos(pos.x + x, pos.y + y, pos.z + z);
-                size_t const hashed  = hash(nextPos, task.mDimension);
+                BlockPos nextPos(pos.x + x, pos.y + y, pos.z + z);
+                size_t   hashed = hash(nextPos, task.mDimension);
 
-                if (mSeracted.contains(hashed) || mQueued.contains(hashed))
-                    continue; // 如果已经搜索过或已在队列中，跳过
+                if (mVisited.insert(hashed).second) { // 如果插入成功（即之前未访问过）
+                    const Block*  nextBlock    = &bs.getBlock(nextPos);
+                    string const& nextTypeName = nextBlock->getTypeName();
 
-                const Block*  nextBlock    = &bs.getBlock(nextPos);
-                string const& nextTypeName = nextBlock->getTypeName();
-
-                if (task.mBlockTypeName == nextTypeName || some(confBlock.similarBlock, nextTypeName)) {
-                    mQueue.push({nextBlock, nextPos}); // 插入队列
-                    mQueued.insert(hashed);            // 标记为已加入队列
+                    if (task.mBlockTypeName == nextTypeName || some(confBlock.similarBlock, nextTypeName)) {
+                        mQueue.emplace_back(nextBlock, nextPos);
+                    }
                 }
             }
-
-            mQueue.pop(); // 出队
         }
+        auto end      = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+
 
         // 计算结果
-        nextTick([taskID, task, confBlock]() {
+        nextTick([taskID, task, confBlock, duration]() {
             if (task.mCount > 0) {
                 auto* pl   = task.mPlayer;
                 auto* tool = task.mTool;
@@ -271,10 +274,11 @@ void core::miner(const int& taskID, const BlockPos stratPos) {
 
                 sendText(
                     pl,
-                    "连锁 {} 个方块, 消耗 {} 点耐久{}",
+                    "连锁 {} 个方块, 消耗 {} 点耐久{}, 耗时 {}ms",
                     std::to_string(task.mCount),
                     std::to_string(task.mDeductDamage),
-                    ConfImpl::cfg.moneys.Enable ? ", " + ConfImpl::cfg.moneys.MoneyName + std::to_string(cost) : ""
+                    ConfImpl::cfg.moneys.Enable ? ", " + ConfImpl::cfg.moneys.MoneyName + std::to_string(cost) : "",
+                    duration.count()
                 );
             }
             mTaskList.erase(taskID);
