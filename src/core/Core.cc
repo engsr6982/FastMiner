@@ -1,12 +1,6 @@
 #include "Core.h"
-#include "ll/api/event/EventBus.h"
-#include "ll/api/event/player/PlayerDestroyBlockEvent.h"
-#include "mc/world/level/BlockPos.h"
-#include "mc/world/level/BlockSource.h"
-#include "utils/Text.h"
-#include <random>
-#include <string>
-#include <unordered_set>
+
+#define logger fm::Mod::getInstance().getSelf().getLogger()
 
 
 namespace core = fm::core;
@@ -59,7 +53,11 @@ void core::registerEvent() {
     _mPlayerDestroyBlock =
         ll::event::EventBus::getInstance().emplaceListener<ll::event::player::PlayerDestroyBlockEvent>(
             [](ll::event::player::PlayerDestroyBlockEvent& ev) {
-                if (mRuningBlock.find(hash(ev)) != mRuningBlock.end() || ev.isCancelled()) return; // 任务正在执行
+                if (mRuningBlock.contains(hash(ev)) || ev.isCancelled()) return; // 任务正在执行
+
+#ifdef DEBUG
+                logger.warn("DestroyBlock");
+#endif
 
                 Player*       player   = &ev.self();
                 const Block*  block    = &player->getDimensionBlockSource().getBlock(ev.pos());
@@ -73,6 +71,10 @@ void core::registerEvent() {
                     return;
                 }
 
+#ifdef DEBUG
+                logger.warn("Prepare Task");
+#endif
+
                 BlockPos blockPos = BlockPos(ev.pos());
 
                 nextTick([player, block, blockPos, typeName]() {
@@ -80,8 +82,16 @@ void core::registerEvent() {
 
                     auto const& iter = ConfImpl::cfg.blocks.find(typeName);
 
+#ifdef DEBUG
+                    logger.warn("Finding block...");
+#endif
+
                     if (iter == ConfImpl::cfg.blocks.end()) return; // 方块未配置
                     auto const& confBlock = iter->second;
+
+#ifdef DEBUG
+                    logger.warn("Finded!");
+#endif
 
                     auto*         tool     = const_cast<ItemStack*>(&player->getSelectedItem()); // 工具
                     string const& toolType = tool->getTypeName();                                // 工具命名空间
@@ -93,11 +103,16 @@ void core::registerEvent() {
                         (confBlock.tools.empty() || some(confBlock.tools, toolType)) && // 未指定工具、指定工具
                         (material.isAlwaysDestroyable() || tool->canDestroy(block)) && // 可挖掘
                         (
-                            (confBlock.silkTouschMod == SilkTouschMod::Smart && hasSilkTouch) || // 智能模式
-                            (confBlock.silkTouschMod == SilkTouschMod::Disable && !hasSilkTouch) || // 关闭
-                            confBlock.silkTouschMod == SilkTouschMod::Always // 总是开启
+                            (confBlock.silkTouschMod == SilkTouschMod::Forbid && !hasSilkTouch) || // 禁止精准
+                            (confBlock.silkTouschMod == SilkTouschMod::Need && hasSilkTouch) || // 需要精准
+                            confBlock.silkTouschMod == SilkTouschMod::Unlimited // 无限制
                         );
-                    // clang-format on
+            // clang-format on
+
+#ifdef DEBUG
+                    logger.warn("canDestroy");
+#endif
+                    // __debugbreak();
 
                     if (!canDestroy) return;
 
@@ -128,6 +143,9 @@ void core::registerEvent() {
                             }
                         );
                         miner(id, blockPos); // 执行任务
+#ifdef DEBUG
+                        logger.warn("Run Task");
+#endif
                     }
                 });
             }
@@ -194,7 +212,7 @@ void core::miner(const int& taskID, const BlockPos stratPos) {
                 BlockPos     nextPos = BlockPos(pos.x + x, pos.y + y, pos.z + z);
                 size_t const hashed  = hash(nextPos, task.mDimension);
 
-                if (mSeracted.find(hashed) != mSeracted.end()) continue;
+                if (mSeracted.contains(hashed)) continue;
                 const Block*  nextBlock    = &bs.getBlock(nextPos);
                 string const& nextTypeName = nextBlock->getTypeName();
 
@@ -245,15 +263,16 @@ void core::miner(const int& taskID, const BlockPos stratPos) {
 
                 sendText(
                     pl,
-                    "连锁 {} 个方块, 消耗 {} 点耐久, {}",
+                    "连锁 {} 个方块, 消耗 {} 点耐久{}",
                     std::to_string(task.mCount),
                     std::to_string(task.mDeductDamage),
-                    ConfImpl::cfg.moneys.MoneyName + std::to_string(cost)
+                    ConfImpl::cfg.moneys.Enable ? ", " + ConfImpl::cfg.moneys.MoneyName + std::to_string(cost) : ""
                 );
             }
             mTaskList.erase(taskID);
         });
     } catch (std::exception& e) {
-        std::cout << e.what() << std::endl;
+        mTaskList.erase(taskID);
+        logger.error("Fail in running task: {}", e.what());
     }
 }

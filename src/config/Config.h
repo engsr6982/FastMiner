@@ -12,9 +12,9 @@ namespace fm::config {
 
 
 enum class SilkTouschMod : int {
-    Disable = 0, // 关闭
-    Always  = 2, // 无限制
-    Smart   = 1  // 智能模式(根据方块决定)
+    Unlimited = 0, // 无限制
+    Forbid    = 1, // 禁止精准附魔
+    Need      = 2  // 需要精准附魔
 };
 
 enum class DestroyMod : int {
@@ -30,8 +30,8 @@ struct BlockItem {
     int    cost{0};    // 经济
     int    limit{128}; // 上限
 
-    DestroyMod    destroyMod{DestroyMod::Default};       // 破坏方式
-    SilkTouschMod silkTouschMod{SilkTouschMod::Disable}; // 精准采集
+    DestroyMod    destroyMod{DestroyMod::Default};         // 破坏方式
+    SilkTouschMod silkTouschMod{SilkTouschMod::Unlimited}; // 精准采集
 
     Tools        tools{};        // 工具
     SimilarBlock similarBlock{}; // 类似方块
@@ -60,7 +60,7 @@ struct Config {
             0,
             128,
             DestroyMod::Cube,
-            SilkTouschMod::Smart,
+            {},
             DefaultWoodBlockTools
         }},
         {"minecraft:ancient_debris", {
@@ -71,7 +71,7 @@ struct Config {
             0,
             128,
             DestroyMod::Default,
-            SilkTouschMod::Smart,
+            {},
             DefaultWoodBlockTools
         }},
         {"minecraft:cherry_log", {
@@ -79,7 +79,7 @@ struct Config {
             0,
             128,
             DestroyMod::Default,
-            SilkTouschMod::Smart,
+            {},
             DefaultWoodBlockTools
         }},
         {"minecraft:coal_ore", {
@@ -109,7 +109,7 @@ struct Config {
             {},
             128,
             {},
-            SilkTouschMod::Smart,
+            {},
             DefaultWoodBlockTools
         }},
         {"minecraft:dark_oak_log", {
@@ -117,7 +117,7 @@ struct Config {
             {},
             128,
             {},
-            SilkTouschMod::Smart,
+            {},
             DefaultWoodBlockTools
         }},
         {"minecraft:deepslate_coal_ore", {
@@ -246,7 +246,7 @@ struct Config {
             {},
             128,
             {},
-            SilkTouschMod::Smart,
+            {},
             DefaultWoodBlockTools
         }},
         {"minecraft:lapis_ore", {
@@ -290,7 +290,7 @@ struct Config {
             {},
             128,
             {},
-            SilkTouschMod::Smart,
+            {},
             DefaultWoodBlockTools
         }},
         {"minecraft:nether_gold_ore", {
@@ -301,7 +301,7 @@ struct Config {
             {},
             128,
             {},
-            SilkTouschMod::Smart,
+            {},
             DefaultWoodBlockTools
         }},
         {"minecraft:quartz_ore", {
@@ -312,7 +312,7 @@ struct Config {
             {},
             128,
             {},
-            SilkTouschMod::Smart,
+            {},
             DefaultWoodBlockTools
         }},
         {"minecraft:warped_stem", {
@@ -320,7 +320,7 @@ struct Config {
             {},
             128,
             {},
-            SilkTouschMod::Smart,
+            {},
             DefaultWoodBlockTools
         }}
     }; // 方块

@@ -20,9 +20,13 @@
 #include "mc/world/level/block/actor/BlockActor.h"
 #include "mc/world/level/dimension/Dimension.h"
 #include "mc/world/level/material/Material.h"
+#include "mod/Mod.h"
+#include "utils/Text.h"
 #include "utils/Utils.h"
 #include <functional>
 #include <memory>
+#include <random>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 

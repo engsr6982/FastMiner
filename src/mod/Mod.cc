@@ -4,6 +4,7 @@
 
 #include "command/Command.h"
 #include "config/Config.h"
+#include "core/Core.h"
 #include "ll/api/mod/RegisterHelper.h"
 
 
@@ -15,6 +16,10 @@ Mod& Mod::getInstance() { return *instance; }
 
 bool Mod::load() {
     getSelf().getLogger().info("Loading...");
+
+#ifdef DEBUG
+    getSelf().getLogger().consoleLevel = 5;
+#endif
 
     config::ConfImpl::load();
     config::ConfImpl::loadPlayerSetting();
@@ -28,6 +33,7 @@ bool Mod::enable() {
     getSelf().getLogger().info("Enabling...");
 
     command::registerCommand();
+    core::registerEvent();
 
     return true;
 }

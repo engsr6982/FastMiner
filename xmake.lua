@@ -33,6 +33,14 @@ target("FastMiner") -- Change this to your mod name.
     set_languages("c++20")
     set_symbols("debug")
 
+    if is_mode("debug") then
+        add_defines("DEBUG")
+    end
+
+    if is_mode("release") then 
+        add_cxflags("/O2")
+    end 
+
     after_build(function (target)
         local mod_packer = import("scripts.after_build")
 
