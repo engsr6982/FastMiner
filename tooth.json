@@ -13,7 +13,8 @@
     },
     "asset_url": "https://github.com/engsr6982/FastMiner/releases/download/v0.2.0/FastMiner-windows-x64.zip",
     "prerequisites": {
-        "github.com/LiteLDev/LeviLamina": "0.13.4"
+        "github.com/LiteLDev/LeviLamina": "0.13.4",
+        "github.com/LiteLDev/LegacyMoney": "0.8.2"
     },
     "files": {
         "place": [
