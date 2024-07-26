@@ -28,7 +28,7 @@ using SimilarBlock = std::vector<string>; // 类似方块
 struct BlockItem {
     string name;       // 名称
     int    cost{0};    // 经济
-    int    limit{128}; // 上限
+    int    limit{256}; // 上限
 
     DestroyMod    destroyMod{DestroyMod::Default};         // 破坏方式
     SilkTouschMod silkTouschMod{SilkTouschMod::Unlimited}; // 精准采集
@@ -57,8 +57,8 @@ struct Config {
     Blocks blocks  = {
         {"minecraft:acacia_log", {
             "金合欢木原木",
-            0,
-            128,
+            {},
+            256,
             DestroyMod::Cube,
             {},
             DefaultWoodBlockTools
@@ -68,16 +68,16 @@ struct Config {
         }},
         {"minecraft:birch_log", {
             "白桦木原木",
-            0,
-            128,
+            {},
+            256,
             DestroyMod::Default,
             {},
             DefaultWoodBlockTools
         }},
         {"minecraft:cherry_log", {
             "樱花原木",
-            0,
-            128,
+            {},
+            256,
             DestroyMod::Default,
             {},
             DefaultWoodBlockTools
@@ -85,7 +85,7 @@ struct Config {
         {"minecraft:coal_ore", {
             "煤矿石",
             {},
-            128,
+            256,
             {},
             {},
             {},
@@ -96,7 +96,7 @@ struct Config {
         {"minecraft:copper_ore", {
             "铜矿石",
             {},
-            128,
+            256,
             {},
             {},
             {},
@@ -107,7 +107,7 @@ struct Config {
         {"minecraft:crimson_stem", {
             "绯红菌柄",
             {},
-            128,
+            256,
             {},
             {},
             DefaultWoodBlockTools
@@ -115,7 +115,7 @@ struct Config {
         {"minecraft:dark_oak_log", {
             "深色橡木原木",
             {},
-            128,
+            256,
             {},
             {},
             DefaultWoodBlockTools
@@ -123,7 +123,7 @@ struct Config {
         {"minecraft:deepslate_coal_ore", {
             "深层煤矿石",
             {},
-            128,
+            256,
             {},
             {},
             {},
@@ -134,7 +134,7 @@ struct Config {
         {"minecraft:deepslate_copper_ore", {
             "深层铜矿石",
             {},
-            128,
+            256,
             {},
             {},
             {},
@@ -145,7 +145,7 @@ struct Config {
         {"minecraft:deepslate_diamond_ore", {
             "深层钻石矿石",
             {},
-            128,
+            256,
             {},
             {},
             {},
@@ -156,7 +156,7 @@ struct Config {
         {"minecraft:deepslate_emerald_ore", {
             "深层绿宝石矿石",
             {},
-            128,
+            256,
             {},
             {},
             {},
@@ -167,7 +167,7 @@ struct Config {
         {"minecraft:deepslate_gold_ore", {
             "深层金矿石",
             {},
-            128,
+            256,
             {},
             {},
             {},
@@ -178,7 +178,7 @@ struct Config {
         {"minecraft:deepslate_iron_ore", {
             "深层铁矿石",
             {},
-            128,
+            256,
             {},
             {},
             {},
@@ -189,7 +189,7 @@ struct Config {
         {"minecraft:deepslate_lapis_ore", {
             "深层青金石矿石",
             {},
-            128,
+            256,
             {},
             {},
             {},
@@ -200,7 +200,7 @@ struct Config {
         {"minecraft:diamond_ore", {
             "钻石矿石",
             {},
-            128,
+            256,
             {},
             {},
             {},
@@ -211,7 +211,7 @@ struct Config {
         {"minecraft:emerald_ore", {
             "绿宝石矿石",
             {},
-            128,
+            256,
             {},
             {},
             {},
@@ -222,7 +222,7 @@ struct Config {
         {"minecraft:gold_ore", {
             "金矿石",
             {},
-            128,
+            256,
             {},
             {},
             {},
@@ -233,7 +233,7 @@ struct Config {
         {"minecraft:iron_ore", {
             "铁矿石",
             {},
-            128,
+            256,
             {},
             {},
             {},
@@ -244,7 +244,7 @@ struct Config {
         {"minecraft:jungle_log", {
             "云杉木原木",
             {},
-            128,
+            256,
             {},
             {},
             DefaultWoodBlockTools
@@ -252,7 +252,7 @@ struct Config {
         {"minecraft:lapis_ore", {
             "青金石矿石",
             {},
-            128,
+            256,
             {},
             {},
             {},
@@ -263,7 +263,7 @@ struct Config {
         {"minecraft:lit_deepslate_redstone_ore", {
             "深层红石矿石",
             {},
-            128,
+            256,
             {},
             {},
             {},
@@ -275,8 +275,8 @@ struct Config {
         }},
         {"minecraft:lit_redstone_ore", {
             "红石矿石",
-            128,
             {},
+            256,
             {},
             {},
             {
@@ -288,7 +288,7 @@ struct Config {
         {"minecraft:mangrove_log", {
             "红树原木",
             {},
-            128,
+            256,
             {},
             {},
             DefaultWoodBlockTools
@@ -299,7 +299,7 @@ struct Config {
         {"minecraft:oak_log", {
             "橡木原木",
             {},
-            128,
+            256,
             {},
             {},
             DefaultWoodBlockTools
@@ -310,7 +310,7 @@ struct Config {
         {"minecraft:spruce_log", {
             "云杉木原木",
             {},
-            128,
+            256,
             {},
             {},
             DefaultWoodBlockTools
@@ -318,7 +318,7 @@ struct Config {
         {"minecraft:warped_stem", {
             "诡异菌柄",
             {},
-            128,
+            256,
             {},
             {},
             DefaultWoodBlockTools
