@@ -50,6 +50,8 @@ int core::randomInt() {
 // Core
 void core::unRegisterEvent() { ll::event::EventBus::getInstance().removeListener(_mPlayerDestroyBlock); }
 void core::registerEvent() {
+    mRuningBlock.reserve(128); // 预分配
+
     _mPlayerDestroyBlock =
         ll::event::EventBus::getInstance().emplaceListener<ll::event::player::PlayerDestroyBlockEvent>(
             [](ll::event::player::PlayerDestroyBlockEvent& ev) {

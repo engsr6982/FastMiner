@@ -4,7 +4,9 @@
 
 FastMiner 与其它同类插件一样的采用 BFS，但不同的是，FastMiner 优化整个执行逻辑，做到更快的处理速度。
 
-FastMiner 目前可以做到 2029 个方块，总耗时 1396ms，平均单个方块耗时 0.68ms。
+FastMiner 的性能可以做到 1w 方块，耗时 3 秒内(2782ms)，应对平常场景绰绰有余
+
+> Ps: 测试机器 CPU 为 12 年前的机器(CPU：AMD-A6-3420m @1.5Ghz)，以现在的 CPU 性能更快
 
 ## 安装
 
@@ -52,3 +54,5 @@ lip install github.com/engsr6982/fastminer
   }
 }
 ```
+
+![image](./readmeimg.png)
