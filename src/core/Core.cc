@@ -271,7 +271,7 @@ void core::miner(const int& taskID, const BlockPos stratPos) {
                 auto cost = confBlock.cost * (task.mCount - 1);
                 Moneys::getInstance().reduceMoney(pl, cost);
 
-                pl->setSelectedItem(*task.mTool);
+                // pl->setSelectedItem(*task.mTool); // 
                 pl->refreshInventory();
 
                 sendText(
