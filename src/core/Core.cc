@@ -112,7 +112,7 @@ void core::registerEvent() {
             // clang-format on
 
 #ifdef DEBUG
-                    logger.warn("canDestroy");
+                    logger.warn("canDestroy: {}", canDestroy);
 #endif
                     // __debugbreak();
 
