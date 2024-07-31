@@ -1,4 +1,6 @@
 #include "Core.h"
+#include "mc/world/item/Item.h"
+
 
 #define logger fm::Mod::getInstance().getSelf().getLogger()
 
@@ -89,21 +91,16 @@ void core::registerEvent() {
 #endif
 
                     if (iter == ConfImpl::cfg.blocks.end()) return; // 方块未配置
-                    auto const& confBlock = iter->second;
-
-#ifdef DEBUG
-                    logger.warn("Finded!");
-#endif
-
-                    auto*         tool     = const_cast<ItemStack*>(&player->getSelectedItem()); // 工具
-                    string const& toolType = tool->getTypeName();                                // 工具命名空间
-                    auto const&   material = block->getMaterial();
+                    auto const&   confBlock = iter->second;
+                    auto*         tool      = const_cast<ItemStack*>(&player->getSelectedItem()); // 工具
+                    string const& toolType  = tool->getTypeName();                                // 工具命名空间
 
                     // clang-format off
                     bool const hasSilkTouch = EnchantUtils::hasEnchant(Enchant::Type::MiningSilkTouch, *tool);
-                    bool const canDestroy   = 
+
+                    bool const canDestroyWithAPI = block->getMaterial().isAlwaysDestroyable() || tool->canDestroy(block) || tool->canDestroySpecial(*block);
+                    bool const canDestroyWithConfig   = 
                         (confBlock.tools.empty() || some(confBlock.tools, toolType)) && // 未指定工具、指定工具
-                        (material.isAlwaysDestroyable() || tool->canDestroy(block)) && // 可挖掘
                         (
                             (confBlock.silkTouschMod == SilkTouschMod::Forbid && !hasSilkTouch) || // 禁止精准
                             (confBlock.silkTouschMod == SilkTouschMod::Need && hasSilkTouch) || // 需要精准
@@ -112,11 +109,13 @@ void core::registerEvent() {
             // clang-format on
 
 #ifdef DEBUG
-                    logger.warn("canDestroy: {}", canDestroy);
+                    logger.warn(
+                        "canDestroyWithConfig: {}  |  canDestroyWithAPI： {}",
+                        canDestroyWithConfig,
+                        canDestroyWithAPI
+                    );
 #endif
-                    // __debugbreak();
-
-                    if (!canDestroy) return;
+                    if (!canDestroyWithConfig || !canDestroyWithAPI) return;
 
                     int maxLimit = confBlock.limit; // 最大挖掘数量
                     if (tool->isDamageableItem()) {
@@ -264,14 +263,11 @@ void core::miner(const int& taskID, const BlockPos stratPos) {
                 auto* tool = task.mTool;
 
                 short dmg = tool->getDamageValue() + task.mDeductDamage;
-                short max = tool->getMaxDamage();
-                if (dmg >= max) dmg = max - 1;
                 tool->setDamageValue(dmg);
 
                 auto cost = confBlock.cost * (task.mCount - 1);
                 Moneys::getInstance().reduceMoney(pl, cost);
 
-                // pl->setSelectedItem(*task.mTool); // 
                 pl->refreshInventory();
 
                 sendText(

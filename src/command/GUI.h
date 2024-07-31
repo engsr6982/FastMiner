@@ -31,8 +31,8 @@ inline static const std::vector<string> blockSilkTouchType = {
     string(magic_enum::enum_name(config::SilkTouschMod::Forbid)),
     string(magic_enum::enum_name(config::SilkTouschMod::Need))
 };
-inline void updateStaticCache() {
-    if (blockJson.empty() || ConfImpl::cfg.blocks.size() != blockSize) {
+inline void updateStaticCache(bool force = false) {
+    if (blockJson.empty() || ConfImpl::cfg.blocks.size() != blockSize || force) {
         blockJson = utils::JsonHelper::structToJson(ConfImpl::cfg.blocks);
         blockSize = ConfImpl::cfg.blocks.size();
     }
@@ -72,19 +72,20 @@ inline void _addBlock(Player& player, string typeName, config::BlockItem block) 
             ConfImpl::cfg.blocks[typeName] = config::BlockItem{name, cost, limit, dmod, smod};
 
             ConfImpl::save();
-            updateStaticCache();
+            updateStaticCache(true);
             sendBlockManager(pl);
         } catch (std::exception& e) {
         } catch (...) {}
     });
 }
 inline void _addBlock(Player& player) {
-    auto block = player.getSelectedItem().getBlock();
+    auto const& item  = player.getSelectedItem();
+    auto        block = item.getBlock();
     if (!block) {
         utils::sendText(player, "获取方块失败!");
         return;
     }
-    _addBlock(player, block->getTypeName(), config::BlockItem{block->getName()});
+    _addBlock(player, block->getTypeName(), config::BlockItem{item.getName()});
 }
 
 inline void _editBlockType(Player& player, string typeName, string content) {
@@ -93,22 +94,26 @@ inline void _editBlockType(Player& player, string typeName, string content) {
     SimpleForm f{PLUGIN_TITLE};
     f.setContent(content);
 
-    f.appendButton("编辑", "", "", [typeName, block](Player& pl) { _addBlock(pl, typeName, block); });
-    f.appendButton("删除", "", "", [typeName](Player& pl) {
+    f.appendButton("编辑", "texture/ui/book_edit_hover", "path", [typeName, block](Player& pl) {
+        _addBlock(pl, typeName, block);
+    });
+    f.appendButton("删除", "texture/ui/icon_trash", "path", [typeName](Player& pl) {
         ConfImpl::cfg.blocks.erase(typeName);
         ConfImpl::save();
-        updateStaticCache();
+        updateStaticCache(true);
         sendBlockManager(pl);
     });
-    f.appendButton("返回", "", "", [](Player& pl) { sendBlockManager(pl); });
+    f.appendButton("返回", "texture/ui/icon_import", "path", [](Player& pl) { sendBlockManager(pl); });
     f.sendTo(player);
 }
 
 inline void sendBlockManager(Player& player) {
+    updateStaticCache();
+
     SimpleForm f{PLUGIN_TITLE};
     f.setContent("FastMiner - 管理面板");
 
-    f.appendButton("添加手持方块", "", "", [](Player& pl) { _addBlock(pl); });
+    f.appendButton("添加手持方块", "texture/ui/color_plus", "path", [](Player& pl) { _addBlock(pl); });
 
     for (auto& [k, v] : blockJson.items()) {
         f.appendButton(v["name"], [k, v](Player& pl) { _editBlockType(pl, k, v.dump(2)); });
