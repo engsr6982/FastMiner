@@ -94,16 +94,16 @@ inline void _editBlockType(Player& player, string typeName, string content) {
     SimpleForm f{PLUGIN_TITLE};
     f.setContent(content);
 
-    f.appendButton("编辑", "texture/ui/book_edit_hover", "path", [typeName, block](Player& pl) {
+    f.appendButton("编辑", "textures/ui/book_edit_hover", "path", [typeName, block](Player& pl) {
         _addBlock(pl, typeName, block);
     });
-    f.appendButton("删除", "texture/ui/icon_trash", "path", [typeName](Player& pl) {
+    f.appendButton("删除", "textures/ui/icon_trash", "path", [typeName](Player& pl) {
         ConfImpl::cfg.blocks.erase(typeName);
         ConfImpl::save();
         updateStaticCache(true);
         sendBlockManager(pl);
     });
-    f.appendButton("返回", "texture/ui/icon_import", "path", [](Player& pl) { sendBlockManager(pl); });
+    f.appendButton("返回", "textures/ui/icon_import", "path", [](Player& pl) { sendBlockManager(pl); });
     f.sendTo(player);
 }
 
@@ -113,7 +113,7 @@ inline void sendBlockManager(Player& player) {
     SimpleForm f{PLUGIN_TITLE};
     f.setContent("FastMiner - 管理面板");
 
-    f.appendButton("添加手持方块", "texture/ui/color_plus", "path", [](Player& pl) { _addBlock(pl); });
+    f.appendButton("添加手持方块", "textures/ui/color_plus", "path", [](Player& pl) { _addBlock(pl); });
 
     for (auto& [k, v] : blockJson.items()) {
         f.appendButton(v["name"], [k, v](Player& pl) { _editBlockType(pl, k, v.dump(2)); });
