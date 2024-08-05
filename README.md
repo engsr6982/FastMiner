@@ -21,6 +21,7 @@ lip install github.com/engsr6982/fastminer
 - /fm 打开设置 GUI
 - /fm off 关闭连锁采集
 - /fm on 开启连锁采集
+- /fm manager 方块管理GUI（OP）
 
 ## 配置文件
 
