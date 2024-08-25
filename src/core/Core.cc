@@ -1,6 +1,9 @@
 #include "Core.h"
 #include "mc/world/item/Item.h"
 
+#include "mc/nbt/CompoundTag.h"
+#include "mc/world/item/registry/ItemStack.h"
+#include <algorithm>
 
 #define logger fm::Mod::getInstance().getSelf().getLogger()
 
@@ -46,6 +49,16 @@ int core::randomInt() {
     static std::default_random_engine         e(rd());
     static std::uniform_int_distribution<int> dist(0, 99);
     return dist(e);
+}
+
+
+// inline
+bool hasUnbreakable(ItemStack* item) {
+    auto nbt = item->save();
+    if (auto tag = nbt->getCompound("tag")) {
+        return (bool)tag->getByte("Unbreakable");
+    }
+    return false;
 }
 
 
@@ -117,17 +130,21 @@ void core::registerEvent() {
 #endif
                     if (!canDestroyWithConfig || !canDestroyWithAPI) return;
 
-                    int maxLimit = confBlock.limit; // 最大挖掘数量
-                    if (tool->isDamageableItem()) {
-                        maxLimit =
-                            std::min(maxLimit, (tool->getMaxDamage() - tool->getDamageValue() - 1)); // 计算最大挖掘量
 
-                        if (ConfImpl::cfg.moneys.Enable)
-                            maxLimit = std::min(
-                                maxLimit,
-                                static_cast<int>(Moneys::getInstance().getMoney(player) / confBlock.cost)
-                            );
+                    int maxLimit = confBlock.limit; // 最大挖掘数量
+                    if (!hasUnbreakable(tool)) {
+                        if (tool->isDamageableItem()) {
+                            maxLimit = std::min(maxLimit, (tool->getMaxDamage() - tool->getDamageValue() - 1));
+
+                            if (ConfImpl::cfg.moneys.Enable) {
+                                maxLimit = std::min(
+                                    maxLimit,
+                                    static_cast<int>(Moneys::getInstance().getMoney(player) / confBlock.cost)
+                                );
+                            }
+                        }
                     }
+
                     if (maxLimit > 1) {
                         int const id = static_cast<int>(mTaskList.size()) + 1;
                         mTaskList.emplace(
@@ -259,11 +276,13 @@ void core::miner(const int& taskID, const BlockPos stratPos) {
         // 计算结果
         nextTick([taskID, task, confBlock, duration]() {
             if (task.mCount > 0) {
-                auto* pl   = task.mPlayer;
-                auto* tool = task.mTool;
+                auto* pl = task.mPlayer;
 
-                short dmg = tool->getDamageValue() + task.mDeductDamage;
-                tool->setDamageValue(dmg);
+                auto* tool = task.mTool;
+                if (!hasUnbreakable(tool)) {
+                    short dmg = tool->getDamageValue() + task.mDeductDamage;
+                    tool->setDamageValue(dmg);
+                }
 
                 auto cost = confBlock.cost * (task.mCount - 1);
                 Moneys::getInstance().reduceMoney(pl, cost);

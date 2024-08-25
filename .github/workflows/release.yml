@@ -107,7 +107,7 @@ jobs:
         working-directory: artifact
 
       - name: Upload to MineBBS
-        uses: engsr6982/upload-minebbs@v1.2.0
+        uses: engsr6982/upload-minebbs@v2
         with:
           minebbs_token: ${{ secrets.MINEBBS_TOKEN }}
           resource_id: "8984"
