@@ -10,8 +10,8 @@ namespace tag {
 struct CommandTag;
 
 struct ConfigModelTag;
-struct BlockConfigTag;
-struct ConfigFactoryTag;
+struct SingleBlockConfigTag;
+struct ConfigImplTag;
 
 struct MinerLauncherTag;
 

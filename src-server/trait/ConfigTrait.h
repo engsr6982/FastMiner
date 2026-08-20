@@ -12,7 +12,7 @@ struct internal::ImplType<tag::ConfigModelTag> {
 };
 
 template <>
-struct internal::ImplType<tag::BlockConfigTag> {
+struct internal::ImplType<tag::SingleBlockConfigTag> {
     using type = server::BlockConfig;
 };
 

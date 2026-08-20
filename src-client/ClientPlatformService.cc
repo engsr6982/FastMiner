@@ -2,7 +2,7 @@
 
 #include "Global.h"
 #include "command/FastMinerCommand.h"
-#include "config/ClientConfig.h"
+#include "config/ClientConfigImpl.h"
 
 #include "ll/api/event/EventBus.h"
 #include "ll/api/event/ListenerBase.h"
@@ -33,11 +33,11 @@ bool ClientPlatformService::init() {
         );
 
     auto& key_registry = ll::input::KeyRegistry::getInstance();
-    key_registry.getOrCreateKey("FastMiner Toggle", {ClientConfig::data.bindKey});
+    key_registry.getOrCreateKey("FastMiner Toggle", {ClientConfigImpl::model.bindKey});
 
     impl->mKeyInputListener = ll::event::EventBus::getInstance().emplaceListener<ll::event::KeyInputEvent>(
         [this](ll::event::KeyInputEvent& event) {
-            if (event.keyCode() == ClientConfig::data.bindKey) {
+            if (event.keyCode() == ClientConfigImpl::model.bindKey) {
                 impl->mKeyActivated = event.isDown();
             }
         }

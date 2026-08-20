@@ -1,7 +1,6 @@
 #include "FastMiner.h"
-#include "command/FastMinerCommand.h"
-#include "config/ConfigBase.h"
-#include "config/ConfigFactory.h"
+#include "config/StaticGlobalConfigHost.h"
+
 
 #include "ll/api/mod/RegisterHelper.h"
 
@@ -41,10 +40,15 @@ FastMiner& FastMiner::getInstance() {
 bool FastMiner::load() { return true; }
 
 bool FastMiner::enable() {
-    auto& instance = ConfigFactory::getInstance();
-    instance.buildDefaultConfig();
-    instance.load();
-    instance.buildRuntimeConfigMap();
+    auto& instance = StaticGlobalConfigHost::getInstance();
+    instance.buildDefault();
+
+    if (auto ok = instance.load(); !ok) {
+        ok.error().log(getSelf().getLogger());
+        return false;
+    }
+
+    instance.buildRuntimeMap();
 
     mImpl->mPlatformService = std::make_unique<PlatformServiceImpl>();
     mImpl->mPlatformService->init();
@@ -61,7 +65,7 @@ bool FastMiner::enable() {
 }
 
 bool FastMiner::disable() {
-    ConfigFactory::getInstance().save();
+    (void)StaticGlobalConfigHost::getInstance().save();
 
     mImpl->mTelemetry->shutdown();
     mImpl->mTelemetry.reset();

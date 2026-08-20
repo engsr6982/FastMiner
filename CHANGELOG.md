@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- 重构配置文件相关代码
+- 服务端侧添加花费经济显示 #11
+
 ## [0.17.0] - 2026-07-16
 
 - 适配 LeviLamina v26.20.x

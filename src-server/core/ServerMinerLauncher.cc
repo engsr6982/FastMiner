@@ -1,9 +1,10 @@
 #include "ServerMinerLauncher.h"
 
 #include "FastMiner.h"
-#include "config/ConfigFactory.h"
-#include "config/ServerConfig.h"
+#include "config/ServerConfigImpl.h"
+#include "config/StaticGlobalConfigHost.h"
 #include "utils/McUtils.h"
+
 
 #include <mc/world/item/enchanting/EnchantUtils.h>
 
@@ -15,14 +16,14 @@ bool ServerMinerLauncher::isMinerEnabled(Player& player, const std::string& bloc
         return false;
     }
 
-    auto& inst = ConfigFactory::getInstance().as<ServerConfig>();
+    auto& inst = StaticGlobalConfigHost::getInstance().as<ServerConfigImpl>();
     auto& uuid = player.getUuid();
-    if (!inst.isEnabled(uuid, ServerConfig::KEY_ENABLE.data())) {
+    if (!inst.isEnabled(uuid, ServerConfigImpl::KEY_ENABLE.data())) {
         FM_TRACE("player miner disabled");
         return false;
     }
 
-    bool sneakingRequired = inst.isEnabled(uuid, ServerConfig::KEY_SNEAK.data());
+    bool sneakingRequired = inst.isEnabled(uuid, ServerConfigImpl::KEY_SNEAK.data());
     bool sneaking         = mc_utils::isSneaking(player);
     if (sneakingRequired && !sneaking) {
         FM_TRACE("sneaking required but player is not sneaking");
@@ -31,8 +32,8 @@ bool ServerMinerLauncher::isMinerEnabled(Player& player, const std::string& bloc
     return inst.isEnabled(uuid, blockType);
 }
 
-bool ServerMinerLauncher::canDestroyBlockWithConfig(Player& player, const RuntimeBlockConfig::Ptr& rtConfig) {
-    const auto& config = rtConfig->rawConfig_;
+bool ServerMinerLauncher::canDestroyBlockWithConfig(Player& player, const RuntimeSingleBlockConfigPtr& rtConfig) {
+    const auto& config = rtConfig->rawConfig;
     const auto& item   = player.getSelectedItem();
 
     if (!config.tools.empty() && !config.tools.contains(item.getTypeName())) {
@@ -52,23 +53,24 @@ bool ServerMinerLauncher::canDestroyBlockWithConfig(Player& player, const Runtim
 }
 MinerTask::NotifyFinishedHook ServerMinerLauncher::getNotifyFinishedHook(MinerTaskContext const& ctx) {
     return [](MinerTask const& task, long long cpuTime) {
-        auto cost = task.blockConfig_->rawConfig_.cost * (task.count_ - 1);
+        auto cost = task.blockConfig_->rawConfig.cost * (task.count_ - 1);
         FastMiner::getInstance().getPlatformService().as<ServerPlatformService>().getEconomy().reduce(
             task.player_.getUuid(),
             cost
         );
         mc_utils::sendText(
             task.player_,
-            "本次连锁了 {} 个方块, 消耗了 {} 点耐久, 总耗时 {}ms",
+            "本次连锁了 {} 个方块, 消耗了 {} 点耐久, 花费 {} 点经济, 总耗时 {}ms",
             task.count_,
             task.deductDamage_,
+            cost,
             cpuTime
         );
     };
 }
 int ServerMinerLauncher::calculateLimit(const MinerTaskContext& ctx) {
     int limit = MinerLauncher::calculateLimit(ctx);
-    if (ServerConfig::data.economy.enabled && ctx.rtConfig->rawConfig_.cost > 0) {
+    if (ServerConfigImpl::model.economy.enabled && ctx.rtConfig->rawConfig.cost > 0) {
         // 动态约束限制为玩家经济
         limit = std::min(
             limit,
@@ -76,7 +78,7 @@ int ServerMinerLauncher::calculateLimit(const MinerTaskContext& ctx) {
                 FastMiner::getInstance().getPlatformService().as<ServerPlatformService>().getEconomy().get(
                     ctx.player.getUuid()
                 )
-                / ctx.rtConfig->rawConfig_.cost
+                / ctx.rtConfig->rawConfig.cost
             )
         );
     }

@@ -1,5 +1,5 @@
 #include "MinerDispatcher.h"
-#include "config/ConfigBase.h"
+#include "config/StaticGlobalConfigHost.h"
 #include "core/MinerTask.h"
 
 #include "mc/world/actor/player/Player.h"
@@ -43,7 +43,7 @@ void MinerDispatcher::onTaskFinished(MinerTask* task) { tasks_.erase(task->playe
 void MinerDispatcher::tick() {
     static constexpr int Burst = 64; // 单次最大突发量(Burst)
 
-    auto const& cfg = ConfigBase::getDispatcherConfig();
+    auto const& cfg = StaticGlobalConfigHost::getDispatcherConfig();
 
     int remainingQuota = cfg.globalBlockLimitPerTick;
     int maxResume      = cfg.maxResumeTasksPerTick;

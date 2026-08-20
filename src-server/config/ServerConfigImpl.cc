@@ -1,7 +1,7 @@
-#include "ServerConfig.h"
+#include "ServerConfigImpl.h"
 
 #include "FastMiner.h"
-#include "config/RuntimeBlockConfig.h"
+#include "config/StaticGlobalConfigHost.h"
 #include "utils/JsonUtils.h"
 
 #include "ll/api/Config.h"
@@ -16,21 +16,23 @@
 namespace fm {
 namespace server {
 
-void ServerConfig::load() {
-    auto path = FastMiner::getInstance().getSelf().getModDir() / "Config.json";
-    if (!std::filesystem::exists(path) || !ll::config::loadConfig(data, path)) {
-        save();
+ll::Expected<> ServerConfigImpl::load(const std::filesystem::path& baseDir) {
+    auto path = baseDir / "Config.json";
+    if (!std::filesystem::exists(path) || !ll::config::loadConfig(model, path)) {
+        save(baseDir);
     }
     loadPlayerConfig();
+    return {};
 }
 
-void ServerConfig::save() {
-    auto path = FastMiner::getInstance().getSelf().getModDir() / "Config.json";
-    ll::config::saveConfig(data, path);
+ll::Expected<> ServerConfigImpl::save(const std::filesystem::path& baseDir) {
+    auto path = baseDir / "Config.json";
+    ll::config::saveConfig(model, path);
     savePlayerConfig();
+    return {};
 }
 
-void ServerConfig::buildDefaultConfig() {
+void ServerConfigImpl::buildDefault() {
     std::unordered_set<std::string> MinecraftAxeTools = {
         VanillaItemNames::WoodenAxe(),
         VanillaItemNames::StoneAxe(),
@@ -40,8 +42,8 @@ void ServerConfig::buildDefaultConfig() {
         VanillaItemNames::NetheriteAxe()
     };
 
-    data.blocks.clear();
-    data.blocks = {
+    model.blocks.clear();
+    model.blocks = {
         // clang-format off
         // 树木类
         {VanillaBlockTypeIds::AcaciaLog(), BlockConfig{
@@ -200,66 +202,74 @@ void ServerConfig::buildDefaultConfig() {
         // clang-format on
     };
 }
-std::shared_ptr<RuntimeBlockConfig> ServerConfig::buildRuntimeBlockConfig(BlockConfig const& config) {
-    auto rtConfig   = std::make_shared<RuntimeBlockConfig>(config);
-    rtConfig->limit = config.limit;
-    rtConfig->similarBlock_.reserve(config.similarBlock.size());
-    for (auto const& similar : config.similarBlock) {
-        rtConfig->similarBlock_.insert(getBlockIdCached(similar));
+
+void ServerConfigImpl::buildRuntimeMap() {
+    for (auto& [type, block] : model.blocks) {
+        runtimeConfigMap.emplace(getBlockIdCached(type), buildRuntimeSingleBlockConfig(block));
+    }
+}
+
+RuntimeSingleBlockConfigPtr ServerConfigImpl::buildRuntimeSingleBlockConfig(SingleBlockConfig single) {
+    auto rtConfig   = std::make_shared<RuntimeSingleBlockConfig>(single);
+    rtConfig->limit = single.limit;
+    rtConfig->similarBlock.reserve(single.similarBlock.size());
+    for (auto const& similar : single.similarBlock) {
+        rtConfig->similarBlock.insert(getBlockIdCached(similar));
     }
     return rtConfig;
 }
 
-void ServerConfig::addTool(std::string const& blockType, std::string const& toolType) {
-    auto iter = data.blocks.find(blockType);
-    if (iter != data.blocks.end()) {
+
+void ServerConfigImpl::addTool(std::string const& blockType, std::string const& toolType) {
+    auto iter = model.blocks.find(blockType);
+    if (iter != model.blocks.end()) {
         iter->second.tools.insert(toolType);
-        save();
+        (void)StaticGlobalConfigHost::save();
     }
 }
-void ServerConfig::removeTool(std::string const& blockType, std::string const& toolType) {
-    auto iter = data.blocks.find(blockType);
-    if (iter != data.blocks.end()) {
+void ServerConfigImpl::removeTool(std::string const& blockType, std::string const& toolType) {
+    auto iter = model.blocks.find(blockType);
+    if (iter != model.blocks.end()) {
         iter->second.tools.erase(toolType);
-        save();
+        (void)StaticGlobalConfigHost::save();
     }
 }
-void ServerConfig::addSimilarBlock(std::string const& blockType, std::string const& similarBlockType) {
-    auto iter = data.blocks.find(blockType);
-    if (iter == data.blocks.end()) {
+void ServerConfigImpl::addSimilarBlock(std::string const& blockType, std::string const& similarBlockType) {
+    auto iter = model.blocks.find(blockType);
+    if (iter == model.blocks.end()) {
         return;
     }
     if (iter->second.similarBlock.insert(similarBlockType).second) {
-        save();
-        if (auto ptr = getRuntimeBlockConfig(blockType)) {
-            ptr->similarBlock_.insert(getBlockIdCached(similarBlockType));
+        (void)StaticGlobalConfigHost::save();
+        if (auto ptr = getRuntimeSingleBlockConfig(blockType)) {
+            ptr->similarBlock.insert(getBlockIdCached(similarBlockType));
         }
     }
 }
-void ServerConfig::removeSimilarBlock(std::string const& blockType, std::string const& similarBlockType) {
-    auto iter = data.blocks.find(blockType);
-    if (iter == data.blocks.end()) {
+void ServerConfigImpl::removeSimilarBlock(std::string const& blockType, std::string const& similarBlockType) {
+    auto iter = model.blocks.find(blockType);
+    if (iter == model.blocks.end()) {
         return;
     }
     if (iter->second.similarBlock.erase(similarBlockType)) {
-        save();
-        if (auto ptr = getRuntimeBlockConfig(blockType)) {
-            ptr->similarBlock_.erase(getBlockIdCached(similarBlockType));
+        (void)StaticGlobalConfigHost::save();
+        if (auto ptr = getRuntimeSingleBlockConfig(blockType)) {
+            ptr->similarBlock.erase(getBlockIdCached(similarBlockType));
         }
     }
 }
-void ServerConfig::updateBlockConfig(std::string const& oldType, std::string const& newType, BlockConfig config) {
+void ServerConfigImpl::updateBlockConfig(std::string const& oldType, std::string const& newType, BlockConfig config) {
     if (oldType == newType) {
-        auto iter = data.blocks.find(oldType);
-        if (iter == data.blocks.end()) {
+        auto iter = model.blocks.find(oldType);
+        if (iter == model.blocks.end()) {
             return;
         }
         iter->second = std::move(config);
-        save();
+        (void)StaticGlobalConfigHost::save();
 
-        if (auto ptr = getRuntimeBlockConfig(oldType)) {
-            ptr->rawConfig_ = iter->second;
-            ptr->limit      = iter->second.limit;
+        if (auto ptr = getRuntimeSingleBlockConfig(oldType)) {
+            ptr->rawConfig = iter->second;
+            ptr->limit     = iter->second.limit;
         }
         return;
     }
@@ -267,31 +277,31 @@ void ServerConfig::updateBlockConfig(std::string const& oldType, std::string con
     removeBlockConfig(oldType);
     addBlockConfig(newType, std::move(config));
 }
-void ServerConfig::addBlockConfig(std::string const& blockType, BlockConfig config) {
-    auto result = data.blocks.emplace(blockType, std::move(config));
+void ServerConfigImpl::addBlockConfig(std::string const& blockType, BlockConfig config) {
+    auto result = model.blocks.emplace(blockType, std::move(config));
     if (result.second) {
-        save();
-        if (auto ptr = buildRuntimeBlockConfig(result.first->second)) {
+        (void)StaticGlobalConfigHost::save();
+        if (auto ptr = buildRuntimeSingleBlockConfig(result.first->second)) {
             runtimeConfigMap.emplace(getBlockIdCached(blockType), ptr);
         }
     }
 }
-void ServerConfig::removeBlockConfig(std::string const& blockType) {
-    auto iter = data.blocks.find(blockType);
-    if (iter == data.blocks.end()) {
+void ServerConfigImpl::removeBlockConfig(std::string const& blockType) {
+    auto iter = model.blocks.find(blockType);
+    if (iter == model.blocks.end()) {
         return;
     }
-    data.blocks.erase(iter); // 擦除旧元素
-    save();
+    model.blocks.erase(iter); // 擦除旧元素
+    (void)StaticGlobalConfigHost::save();
     runtimeConfigMap.erase(getBlockIdCached(blockType));
 }
 
-void ServerConfig::loadPlayerConfig() {
+void ServerConfigImpl::loadPlayerConfig() {
     auto& mod  = FastMiner::getInstance().getSelf();
     auto  path = mod.getModDir() / PlayerConfigFileName;
 
     if (!std::filesystem::exists(path)) {
-        save();
+        (void)StaticGlobalConfigHost::save();
         return;
     }
 
@@ -310,7 +320,7 @@ void ServerConfig::loadPlayerConfig() {
     json_utils::json2struct(playerBlockState_, json);
     ensurePlayerBlockConfig();
 }
-void ServerConfig::savePlayerConfig() {
+void ServerConfigImpl::savePlayerConfig() {
     auto& mod  = FastMiner::getInstance().getSelf();
     auto  path = mod.getModDir() / PlayerConfigFileName;
 
@@ -319,14 +329,14 @@ void ServerConfig::savePlayerConfig() {
 }
 
 
-bool ServerConfig::isEnabled(const mce::UUID& uuid, const std::string& key) {
+bool ServerConfigImpl::isEnabled(const mce::UUID& uuid, const std::string& key) {
     auto iter = playerBlockState_.find(uuid);
     if (iter == playerBlockState_.end()) {
         return false;
     }
     return iter->second[key];
 }
-void ServerConfig::setEnabled(const mce::UUID& uuid, const std::string& key, bool enabled) {
+void ServerConfigImpl::setEnabled(const mce::UUID& uuid, const std::string& key, bool enabled) {
     auto iter = playerBlockState_.find(uuid);
     if (iter == playerBlockState_.end()) {
         playerBlockState_[uuid] = {
@@ -336,25 +346,27 @@ void ServerConfig::setEnabled(const mce::UUID& uuid, const std::string& key, boo
     }
     iter->second[key] = enabled;
 }
-void ServerConfig::enable(const mce::UUID& uuid, const std::string& key) { setEnabled(uuid, key, true); }
-void ServerConfig::disable(const mce::UUID& uuid, const std::string& key) { setEnabled(uuid, key, false); }
-bool ServerConfig::hasPlayer(const mce::UUID& uuid) { return playerBlockState_.find(uuid) != playerBlockState_.end(); }
-bool ServerConfig::hasBlock(const mce::UUID& uuid, const std::string& key) {
+void ServerConfigImpl::enable(const mce::UUID& uuid, const std::string& key) { setEnabled(uuid, key, true); }
+void ServerConfigImpl::disable(const mce::UUID& uuid, const std::string& key) { setEnabled(uuid, key, false); }
+bool ServerConfigImpl::hasPlayer(const mce::UUID& uuid) {
+    return playerBlockState_.find(uuid) != playerBlockState_.end();
+}
+bool ServerConfigImpl::hasBlock(const mce::UUID& uuid, const std::string& key) {
     auto iter = playerBlockState_.find(uuid);
     if (iter == playerBlockState_.end()) {
         return false;
     }
     return iter->second.find(key) != iter->second.end();
 }
-void ServerConfig::removeBlock(const mce::UUID& uuid, const std::string& key) {
+void ServerConfigImpl::removeBlock(const mce::UUID& uuid, const std::string& key) {
     auto iter = playerBlockState_.find(uuid);
     if (iter == playerBlockState_.end()) {
         return;
     }
     iter->second.erase(key);
 }
-void ServerConfig::ensurePlayerBlockConfig() {
-    auto const& blocks = data.blocks;
+void ServerConfigImpl::ensurePlayerBlockConfig() {
+    auto const& blocks = model.blocks;
     for (auto&& [uuid, bls] : playerBlockState_) {
 
         auto iter = bls.begin();

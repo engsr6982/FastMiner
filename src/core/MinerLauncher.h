@@ -28,7 +28,9 @@ public:
 
     virtual bool isMinerEnabled(Player& player, std::string const& blockType) = 0;
 
-    virtual bool canDestroyBlockWithConfig(Player& player, RuntimeBlockConfig::Ptr const& rtConfig) = 0;
+    virtual bool canDestroyBlockWithConfig(Player& player, RuntimeSingleBlockConfigPtr const& rtConfig) = 0;
+
+    virtual RuntimeSingleBlockConfigPtr loadRuntimeSingleBlockConfig(std::string const& blockType);
 
     virtual MinerTask::NotifyFinishedHook getNotifyFinishedHook(MinerTaskContext const& ctx);
 

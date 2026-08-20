@@ -1,18 +1,22 @@
 #pragma once
 #include "IServerPlayerConfig.h"
-#include "config/ConfigBase.h"
+#include "config/StaticGlobalConfigHost.h"
 
 namespace fm {
 namespace server {
 
-class ServerConfig final : public ConfigBase, public IServerPlayerConfig {
+class ServerConfigImpl final : public StaticGlobalConfigHost, public IServerPlayerConfig {
 public:
-    void load() override;
-    void save() override;
+    ll::Expected<> load(const std::filesystem::path& baseDir) override;
 
-    void buildDefaultConfig() override;
+    ll::Expected<> save(const std::filesystem::path& baseDir) override;
 
-    std::shared_ptr<RuntimeBlockConfig> buildRuntimeBlockConfig(BlockConfig const& config) override;
+    void buildDefault() override;
+
+    void buildRuntimeMap() override;
+
+    RuntimeSingleBlockConfigPtr buildRuntimeSingleBlockConfig(SingleBlockConfig single) override;
+
 
 public: /* GUI */
     void addTool(std::string const& blockType, std::string const& toolType);
@@ -25,7 +29,8 @@ public: /* GUI */
     void addBlockConfig(std::string const& blockType, BlockConfig config);
     void removeBlockConfig(std::string const& blockType);
 
-public: /* Player */
+public:
+    /* Player */
     void loadPlayerConfig();
     void savePlayerConfig();
 

@@ -1,11 +1,12 @@
 #include "gui/Form.h"
 
-#include "config/ConfigFactory.h"
-#include "config/ServerConfig.h"
+#include "config/ServerConfigImpl.h"
 #include "config/ServerConfigModel.h"
+#include "config/StaticGlobalConfigHost.h"
 #include "core/DispatcherConfig.h"
 #include "utils/JsonUtils.h"
 #include "utils/McUtils.h"
+
 
 #include "fmt/format.h"
 
@@ -41,7 +42,7 @@ inline std::unordered_map<std::string, SilkTouchMode> const SilkTouchMap  = {
 };
 
 void __sendEditBlockTools(Player& player, std::string const& typeName) {
-    auto& tools = ServerConfig::data.blocks[typeName].tools;
+    auto& tools = ServerConfigImpl::model.blocks[typeName].tools;
 
     SimpleForm f{PLUGIN_NAME};
     f.appendButton("返回", "textures/ui/icon_import", "path", [typeName](Player& pl) {
@@ -53,13 +54,13 @@ void __sendEditBlockTools(Player& player, std::string const& typeName) {
             mc_utils::sendText<mc_utils::LogLevel::Error>(pl, "请手持一个工具!");
             return;
         }
-        ConfigFactory::getInstance().as<ServerConfig>().addTool(typeName, item.getTypeName());
+        StaticGlobalConfigHost::getInstance().as<ServerConfigImpl>().addTool(typeName, item.getTypeName());
         __sendEditBlockTools(pl, typeName);
     });
     f.appendDivider();
     for (auto const& tool : tools) {
         f.appendButton(fmt::format("{}\n点击移除工具", tool), [tool, typeName]([[maybe_unused]] Player& pl) {
-            ConfigFactory::getInstance().as<ServerConfig>().removeTool(typeName, tool);
+            StaticGlobalConfigHost::getInstance().as<ServerConfigImpl>().removeTool(typeName, tool);
             __sendEditBlockTools(pl, typeName);
         });
     }
@@ -67,7 +68,7 @@ void __sendEditBlockTools(Player& player, std::string const& typeName) {
 }
 
 void __sendEditSimilarBlock(Player& player, std::string const& typeName) {
-    auto& similarBlock = ServerConfig::data.blocks[typeName].similarBlock;
+    auto& similarBlock = ServerConfigImpl::model.blocks[typeName].similarBlock;
 
     SimpleForm f{PLUGIN_NAME};
     f.appendButton("返回", "textures/ui/icon_import", "path", [typeName](Player& pl) {
@@ -79,13 +80,16 @@ void __sendEditSimilarBlock(Player& player, std::string const& typeName) {
             mc_utils::sendText<mc_utils::LogLevel::Error>(pl, "请手持一个方块!");
             return;
         }
-        ConfigFactory::getInstance().as<ServerConfig>().addSimilarBlock(typeName, item.mBlock->getTypeName());
+        StaticGlobalConfigHost::getInstance().as<ServerConfigImpl>().addSimilarBlock(
+            typeName,
+            item.mBlock->getTypeName()
+        );
         __sendEditSimilarBlock(pl, typeName);
     });
     f.appendDivider();
     for (auto const& similar : similarBlock) {
         f.appendButton(fmt::format("{}\n点击移除方块", similar), [similar, typeName]([[maybe_unused]] Player& pl) {
-            ConfigFactory::getInstance().as<ServerConfig>().removeSimilarBlock(typeName, similar);
+            StaticGlobalConfigHost::getInstance().as<ServerConfigImpl>().removeSimilarBlock(typeName, similar);
             __sendEditSimilarBlock(pl, typeName);
         });
     }
@@ -93,7 +97,7 @@ void __sendEditSimilarBlock(Player& player, std::string const& typeName) {
 }
 
 void _sendEditBlockConfig(Player& player, std::string const& typeName) {
-    auto const& block = ServerConfig::data.blocks[typeName];
+    auto const& block = ServerConfigImpl::model.blocks[typeName];
     CustomForm  f{PLUGIN_NAME};
 
     f.appendInput("typeName", "命名空间", "string", typeName);
@@ -114,7 +118,7 @@ void _sendEditBlockConfig(Player& player, std::string const& typeName) {
             DestroyMode   dmod     = DestroyModeMap.at(std::get<std::string>(res->at("destroyMode")));
             SilkTouchMode smod     = SilkTouchMap.at(std::get<std::string>(res->at("silkTouchMode")));
 
-            ConfigFactory::getInstance().as<ServerConfig>().updateBlockConfig(
+            StaticGlobalConfigHost::getInstance().as<ServerConfigImpl>().updateBlockConfig(
                 last,
                 typeName,
                 {name, cost, limit, dmod, smod}
@@ -136,12 +140,15 @@ void _addHandheldItemBlock(Player& player) {
     }
     auto block = item.mBlock;
 
-    ConfigFactory::getInstance().as<ServerConfig>().addBlockConfig(block->getTypeName(), {.name = item.getName()});
+    StaticGlobalConfigHost::getInstance().as<ServerConfigImpl>().addBlockConfig(
+        block->getTypeName(),
+        {.name = item.getName()}
+    );
     _sendEditBlockConfig(player, block->getTypeName());
 }
 
 void _sendBlockViewer(Player& player, std::string const& typeName) {
-    auto const& block = ServerConfig::data.blocks[typeName];
+    auto const& block = ServerConfigImpl::model.blocks[typeName];
 
     SimpleForm{PLUGIN_NAME}
         .setContent(json_utils::struct2json(block).dump(2))
@@ -169,9 +176,9 @@ void _sendBlockViewer(Player& player, std::string const& typeName) {
             "textures/ui/icon_trash",
             "path",
             [typeName](Player& pl) {
-                ConfigFactory::getInstance().as<ServerConfig>().removeBlockConfig(typeName);
-                ConfigFactory::getInstance().as<ServerConfig>().removeBlock(pl.getUuid(), typeName);
-                ConfigFactory::getInstance().as<ServerConfig>().savePlayerConfig();
+                StaticGlobalConfigHost::getInstance().as<ServerConfigImpl>().removeBlockConfig(typeName);
+                StaticGlobalConfigHost::getInstance().as<ServerConfigImpl>().removeBlock(pl.getUuid(), typeName);
+                StaticGlobalConfigHost::getInstance().as<ServerConfigImpl>().savePlayerConfig();
                 sendOpBlockManager(pl);
             }
         )
@@ -186,7 +193,7 @@ void sendOpBlockManager(Player& player) {
     f.appendButton("添加手持方块", "textures/ui/color_plus", "path", [](Player& pl) { _addHandheldItemBlock(pl); });
     f.appendDivider();
 
-    for (auto& [k, v] : ServerConfig::data.blocks) {
+    for (auto& [k, v] : ServerConfigImpl::model.blocks) {
         f.appendButton(v.name, [k](Player& pl) { _sendBlockViewer(pl, k); });
     }
 
@@ -197,42 +204,42 @@ void sendOpBlockManager(Player& player) {
 void sendPlayerConfigGUI(Player& player) {
     auto const& uuid = player.getUuid();
 
-    auto& serverConfig = ConfigFactory::getInstance().as<ServerConfig>();
+    auto& impl = StaticGlobalConfigHost::getInstance().as<ServerConfigImpl>();
 
     CustomForm f{PLUGIN_NAME};
     f.appendToggle(
-        ServerConfig::KEY_ENABLE.data(),
+        ServerConfigImpl::KEY_ENABLE.data(),
         "启用连锁采集",
-        serverConfig.isEnabled(uuid, ServerConfig::KEY_ENABLE.data())
+        impl.isEnabled(uuid, ServerConfigImpl::KEY_ENABLE.data())
     );
     f.appendToggle(
-        ServerConfig::KEY_SNEAK.data(),
+        ServerConfigImpl::KEY_SNEAK.data(),
         "仅潜行时启用",
-        serverConfig.isEnabled(uuid, ServerConfig::KEY_SNEAK.data())
+        impl.isEnabled(uuid, ServerConfigImpl::KEY_SNEAK.data())
     );
 
     f.appendDivider();
     f.appendLabel(">>>  方块配置");
-    for (auto const& [key, item] : ServerConfig::data.blocks) {
-        f.appendToggle(key, item.name, serverConfig.isEnabled(uuid, key));
+    for (auto const& [key, item] : ServerConfigImpl::model.blocks) {
+        f.appendToggle(key, item.name, impl.isEnabled(uuid, key));
     }
 
-    f.sendTo(player, [&serverConfig](Player& pl, CustomFormResult const& res, FormCancelReason) {
+    f.sendTo(player, [&impl](Player& pl, CustomFormResult const& res, FormCancelReason) {
         if (!res) return;
 
         auto const& uuid = pl.getUuid();
 
-        bool const enable = std::get<uint64_t>(res->at(ServerConfig::KEY_ENABLE.data()));
-        bool const sneak  = std::get<uint64_t>(res->at(ServerConfig::KEY_SNEAK.data()));
-        serverConfig.setEnabled(uuid, ServerConfig::KEY_ENABLE.data(), enable);
-        serverConfig.setEnabled(uuid, ServerConfig::KEY_SNEAK.data(), sneak);
+        bool const enable = std::get<uint64_t>(res->at(ServerConfigImpl::KEY_ENABLE.data()));
+        bool const sneak  = std::get<uint64_t>(res->at(ServerConfigImpl::KEY_SNEAK.data()));
+        impl.setEnabled(uuid, ServerConfigImpl::KEY_ENABLE.data(), enable);
+        impl.setEnabled(uuid, ServerConfigImpl::KEY_SNEAK.data(), sneak);
 
-        for (auto& [k, v] : ServerConfig::data.blocks) {
+        for (auto& [k, v] : ServerConfigImpl::model.blocks) {
             if (res->contains(k)) {
-                serverConfig.setEnabled(uuid, k, std::get<uint64_t>(res->at(k)));
+                impl.setEnabled(uuid, k, std::get<uint64_t>(res->at(k)));
             }
         }
-        serverConfig.savePlayerConfig();
+        impl.savePlayerConfig();
         mc_utils::sendText(pl, "设置已保存");
     });
 }

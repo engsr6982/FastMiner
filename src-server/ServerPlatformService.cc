@@ -1,7 +1,7 @@
 #include "ServerPlatformService.h"
 
 #include "command/FastMinerCommand.h"
-#include "config/ServerConfig.h"
+#include "config/ServerConfigImpl.h"
 #include "config/ServerConfigModel.h"
 
 #include "econbridge/detail/LegacyMoneyEconomy.h"
@@ -15,17 +15,17 @@ struct ServerPlatformService::Impl {
     std::unique_ptr<econbridge::IEconomy> mEconomy{nullptr};
 
     void initEconomy() {
-        if (!ServerConfig::data.economy.enabled) {
+        if (!ServerConfigImpl::model.economy.enabled) {
             mEconomy = std::make_unique<econbridge::detail::NullEconomy>();
             return;
         }
-        switch (ServerConfig::data.economy.kit) {
-        case ServerConfig::ConfigModel::EconomyConfig::EconomyKit::LegacyMoney:
+        switch (ServerConfigImpl::model.economy.kit) {
+        case ConfigModel::EconomyConfig::EconomyKit::LegacyMoney:
             mEconomy = std::make_unique<econbridge::detail::LegacyMoneyEconomy>();
             break;
-        case ServerConfig::ConfigModel::EconomyConfig::EconomyKit::ScoreBoard:
+        case ConfigModel::EconomyConfig::EconomyKit::ScoreBoard:
             mEconomy =
-                std::make_unique<econbridge::detail::ScoreboardEconomy>(ServerConfig::data.economy.scoreboardName);
+                std::make_unique<econbridge::detail::ScoreboardEconomy>(ServerConfigImpl::model.economy.scoreboardName);
             break;
         }
     }

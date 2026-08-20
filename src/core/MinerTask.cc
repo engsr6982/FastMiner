@@ -71,7 +71,6 @@ inline static std::vector<MinerTask::Direction> CubeDirections = {
 };
 
 
-
 MinerTask::MinerTask(MinerTaskContext ctx, MinerDispatcher& dispatcher, NotifyFinishedHook finishedHook)
 : player_(ctx.player),
   tool_(const_cast<ItemStack&>(player_.getSelectedItem())),
@@ -85,7 +84,8 @@ MinerTask::MinerTask(MinerTaskContext ctx, MinerDispatcher& dispatcher, NotifyFi
   durability_(EnchantUtils::getEnchantLevel(::Enchant::Type::Unbreaking, tool_)),
   //   blockChangeCtx_(ActorChangeContext{&player_}),
   eventBus_(ll::event::EventBus::getInstance()),
-  directions_(blockConfig_->rawConfig_.destroyMode == DestroyMode::Cube ? CubeDirections : AdjacentDirections),
+  // TODO: 不再硬编码访问 rawConfig，抽离向量方向为传入配置
+  directions_(blockConfig_->rawConfig.destroyMode == DestroyMode::Cube ? CubeDirections : AdjacentDirections),
   dispatcher_(dispatcher),
   notifyFinishedHook_(finishedHook) {
     blockChangeCtx_.mContextSource = ActorChangeContext{&player_};
@@ -189,7 +189,7 @@ void MinerTask::searchAdjacentBlocks(QueueElement const& element) {
         if (visited_.insert(hashed).second) {
             auto const& block = blockSource_.getBlock(adjacent);
             auto const  id    = block.getBlockItemId();
-            if (id == blockId_ || blockConfig_->similarBlock_.contains(id)) {
+            if (id == blockId_ || blockConfig_->similarBlock.contains(id)) {
                 queue_.emplace_back(std::move(adjacent), std::move(hashed)); // 加入搜索队列
             }
         }

@@ -1,7 +1,10 @@
 #include "ServerFastMinerCommand.h"
 #include "FastMiner.h"
 #include "Type.h"
+#include "config/ServerConfigImpl.h"
+#include "config/StaticGlobalConfigHost.h"
 #include "utils/McUtils.h"
+
 
 #include "../gui/Form.h"
 
@@ -28,7 +31,6 @@
 #include <sstream>
 #include <string>
 
-#include "config/ConfigFactory.h"
 #include "magic_enum.hpp"
 
 #include "mc/deps/nbt/ByteTag.h"
@@ -65,7 +67,8 @@ inline constexpr auto ERR_ONLY_PLAYER_USE = "This command can only be used by pl
 
 
 void ServerFastMinerCommand::setup(std::string_view command, std::string_view description) {
-    auto& cmd = ll::command::CommandRegistrar::getInstance(false).getOrCreateCommand(command.data(), description.data());
+    auto& cmd =
+        ll::command::CommandRegistrar::getInstance(false).getOrCreateCommand(command.data(), description.data());
 
     // fm
     cmd.overload().execute([](CommandOrigin const& ori, CommandOutput& out) {
@@ -84,9 +87,9 @@ void ServerFastMinerCommand::setup(std::string_view command, std::string_view de
             }
             Player& pl = *static_cast<Player*>(ori.getEntity());
 
-            ConfigFactory::getInstance().as<ServerConfig>().setEnabled(
+            StaticGlobalConfigHost::getInstance().as<ServerConfigImpl>().setEnabled(
                 pl.getUuid(),
-                ServerConfig::KEY_ENABLE.data(),
+                ServerConfigImpl::KEY_ENABLE.data(),
                 (bool)opt.state
             );
             mc_utils::sendText(pl, "设置已保存");

@@ -45,17 +45,17 @@ struct MinerTask {
         Interrupted, // 被中断
     };
 
-    State                   state_{State::Pending}; // 任务状态
-    Player&                 player_;                // 执行任务的玩家
-    ItemStack&              tool_;                  // 使用的工具
-    unsigned short const    blockId_;               // 方块 Id
-    BlockPos const          startPos_;              // 任务起始位置
-    HashedDimPos const      hashedStartPos_;        // 任务起始位置的哈希值
-    RuntimeBlockConfig::Ptr blockConfig_;           // 方块配置
-    BlockSource&            blockSource_;           // 方块源
-    int const               limit_{0};              // 挖掘次数限制
-    int const               dimension_;             // 任务所在的维度
-    int const               durability_{0};         // 工具耐久度
+    State                       state_{State::Pending}; // 任务状态
+    Player&                     player_;                // 执行任务的玩家
+    ItemStack&                  tool_;                  // 使用的工具
+    unsigned short const        blockId_;               // 方块 Id
+    BlockPos const              startPos_;              // 任务起始位置
+    HashedDimPos const          hashedStartPos_;        // 任务起始位置的哈希值
+    RuntimeSingleBlockConfigPtr blockConfig_;           // 方块配置
+    BlockSource&                blockSource_;           // 方块源
+    int const                   limit_{0};              // 挖掘次数限制
+    int const                   dimension_;             // 任务所在的维度
+    int const                   durability_{0};         // 工具耐久度
 
     BlockChangeContext   blockChangeCtx_; // 方块改变上下文
     ll::event::EventBus& eventBus_;       // 事件总线

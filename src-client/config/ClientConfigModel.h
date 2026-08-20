@@ -8,17 +8,22 @@
 
 namespace fm::client {
 
-struct BlockConfig {
+struct BlockOverride {
     std::string                     name;
     std::optional<int>              limit{std::nullopt};
     DestroyMode                     destroyMode{DestroyMode::Default};
     std::unordered_set<std::string> similarBlock{};
 };
 
-using Blocks = std::unordered_map<std::string, BlockConfig>;
+using BlockOverrides = std::unordered_map<std::string, BlockOverride>;
+
+struct BlockDefault {
+    std::optional<int> limit{1024};
+    DestroyMode        destroyMode{DestroyMode::Default};
+};
 
 struct ClientConfigModel {
-    static int constexpr SchemaVersion = 2;
+    static int constexpr SchemaVersion = 3;
 
     int version = SchemaVersion;
 
@@ -28,7 +33,8 @@ struct ClientConfigModel {
 
     int bindKey{86}; // Windows VK Codes
 
-    Blocks blocks;
+    BlockDefault   blockDefault;
+    BlockOverrides overrides; // override default block settings
 };
 
 } // namespace fm::client

@@ -12,8 +12,8 @@ struct internal::ImplType<tag::ConfigModelTag> {
 };
 
 template <>
-struct internal::ImplType<tag::BlockConfigTag> {
-    using type = client::BlockConfig;
+struct internal::ImplType<tag::SingleBlockConfigTag> {
+    using type = client::BlockOverride;
 };
 
 

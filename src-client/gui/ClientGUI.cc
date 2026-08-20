@@ -1,7 +1,7 @@
 #include "ClientGUI.h"
 
-#include "config/ClientConfig.h"
-#include "config/ConfigFactory.h"
+#include "config/ClientConfigImpl.h"
+#include "config/StaticGlobalConfigHost.h"
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/form/ModalForm.h"
 #include "ll/api/form/SimpleForm.h"
@@ -23,14 +23,14 @@ void ClientGUI::sendTo(Player& player) {
 
     fm.appendButton("添加方块", [](Player& player) { _handleAddItemBlock(player); });
 
-    for (auto const& [blockType, blockConfig] : ClientConfig::data.blocks) {
+    for (auto const& [blockType, blockConfig] : ClientConfigImpl::model.overrides) {
         fm.appendButton(blockConfig.name, [&blockType](Player& player) { _sendBlockViewer(player, blockType); });
     }
 
     fm.sendTo(player);
 }
 void ClientGUI::_sendBlockViewer(Player& player, std::string const& typeName) {
-    auto const& block = ClientConfig::data.blocks[typeName];
+    auto const& block = ClientConfigImpl::model.overrides[typeName];
 
     SimpleForm{PLUGIN_NAME}
         .setContent(json_utils::struct2json(block).dump(2))
@@ -52,7 +52,7 @@ void ClientGUI::_sendBlockViewer(Player& player, std::string const& typeName) {
             "textures/ui/icon_trash",
             "path",
             [typeName](Player& pl) {
-                ConfigFactory::getInstance().as<ClientConfig>().removeBlockConfig(typeName);
+                StaticGlobalConfigHost::getInstance().as<ClientConfigImpl>().removeBlockConfig(typeName);
                 sendTo(pl);
             }
         )
@@ -60,7 +60,7 @@ void ClientGUI::_sendBlockViewer(Player& player, std::string const& typeName) {
         .sendTo(player);
 }
 void ClientGUI::_sendEditSimilarBlock(Player& player, std::string const& typeName) {
-    auto& similarBlock = ClientConfig::data.blocks[typeName].similarBlock;
+    auto& similarBlock = ClientConfigImpl::model.overrides[typeName].similarBlock;
 
     SimpleForm f{PLUGIN_NAME};
     f.appendButton("返回", "textures/ui/icon_import", "path", [typeName](Player& pl) { sendTo(pl); });
@@ -70,13 +70,16 @@ void ClientGUI::_sendEditSimilarBlock(Player& player, std::string const& typeNam
             mc_utils::sendText<mc_utils::LogLevel::Error>(pl, "请手持一个方块!");
             return;
         }
-        ConfigFactory::getInstance().as<ClientConfig>().addSimilarBlock(typeName, item.mBlock->getTypeName());
+        StaticGlobalConfigHost::getInstance().as<ClientConfigImpl>().addSimilarBlock(
+            typeName,
+            item.mBlock->getTypeName()
+        );
         _sendEditSimilarBlock(pl, typeName);
     });
     f.appendDivider();
     for (auto const& similar : similarBlock) {
         f.appendButton(fmt::format("{}\n点击移除方块", similar), [similar, typeName]([[maybe_unused]] Player& pl) {
-            ConfigFactory::getInstance().as<ClientConfig>().removeSimilarBlock(typeName, similar);
+            StaticGlobalConfigHost::getInstance().as<ClientConfigImpl>().removeSimilarBlock(typeName, similar);
             _sendEditSimilarBlock(pl, typeName);
         });
     }
@@ -94,7 +97,10 @@ void ClientGUI::_handleAddItemBlock(Player& player) {
     }
     auto block = item.mBlock;
 
-    ConfigFactory::getInstance().as<ClientConfig>().addBlockConfig(block->getTypeName(), {.name = item.getName()});
+    StaticGlobalConfigHost::getInstance().as<ClientConfigImpl>().addBlockConfig(
+        block->getTypeName(),
+        {.name = item.getName()}
+    );
     _sendEditBlockConfig(player, block->getTypeName());
 }
 
@@ -104,7 +110,7 @@ inline std::unordered_map<std::string, DestroyMode> const DestroyModeMap  = {
     {DestroyModeType[1], DestroyMode::Cube   }
 };
 void ClientGUI::_sendEditBlockConfig(Player& player, std::string const& typeName) {
-    auto const& block = ClientConfig::data.blocks[typeName];
+    auto const& block = ClientConfigImpl::model.overrides[typeName];
     CustomForm  f{PLUGIN_NAME};
 
     f.appendInput("typeName", "命名空间", "string", typeName);
@@ -122,7 +128,11 @@ void ClientGUI::_sendEditBlockConfig(Player& player, std::string const& typeName
             DestroyMode dmod     = DestroyModeMap.at(std::get<std::string>(res->at("destroyMode")));
 
             std::optional<int> finalLimit = limit == -1 ? std::nullopt : std::optional<int>{limit};
-            ConfigFactory::getInstance().as<ClientConfig>().updateBlockConfig(last, typeName, {name, finalLimit, dmod});
+            StaticGlobalConfigHost::getInstance().as<ClientConfigImpl>().updateBlockConfig(
+                last,
+                typeName,
+                {name, finalLimit, dmod}
+            );
             _sendBlockViewer(pl, typeName);
         } catch (...) {}
     });

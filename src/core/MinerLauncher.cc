@@ -1,12 +1,13 @@
 #pragma once
 #include "core/MinerLauncher.h"
 #include "absl/container/flat_hash_set.h"
-#include "config/ConfigFactory.h"
+#include "config/StaticGlobalConfigHost.h"
 #include "core/MinerDispatcher.h"
 #include "core/MinerTask.h"
 #include "core/MinerTaskContext.h"
 #include "core/MinerUtil.h"
 #include "utils/McUtils.h"
+
 
 #include "ll/api/chrono/GameChrono.h"
 #include "ll/api/coro/CoroTask.h"
@@ -105,7 +106,8 @@ void MinerLauncher::onPlayerDestroyBlock(ll::event::PlayerDestroyBlockEvent& ev)
         FM_TRACE("player can not destroy block with mc api");
         return; // 玩家无法破坏该方块
     }
-    auto rtConfig = ConfigBase::getRuntimeBlockConfig(blockType);
+
+    auto rtConfig = this->loadRuntimeSingleBlockConfig(blockType);
     if (!rtConfig) [[unlikely]] {
         FM_TRACE("block type not found in rtConfig");
         return; // 配置文件中没有该方块类型
@@ -135,6 +137,10 @@ bool MinerLauncher::canDestroyBlockWithMcApi(Player& player, Block const& block)
     // TODO: use BlockSource::checkBlockDestroyPermissions ?
     return player.canDestroyBlock(block) || mc_utils::CanDestroyBlock(player.getSelectedItem(), block)
         || mc_utils::CanDestroySpecial(player.getSelectedItem(), block);
+}
+
+RuntimeSingleBlockConfigPtr MinerLauncher::loadRuntimeSingleBlockConfig(std::string const& blockType) {
+    return StaticGlobalConfigHost::getRuntimeSingleBlockConfig(blockType);
 }
 
 void MinerLauncher::prepareAndLaunchTask(MinerTaskContext ctx) {
