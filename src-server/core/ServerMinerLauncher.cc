@@ -53,7 +53,11 @@ bool ServerMinerLauncher::canDestroyBlockWithConfig(Player& player, const Runtim
 }
 MinerTask::NotifyFinishedHook ServerMinerLauncher::getNotifyFinishedHook(MinerTaskContext const& ctx) {
     return [](MinerTask const& task, long long cpuTime) {
-        auto cost = task.blockConfig_->rawConfig.cost * (task.count_ - 1);
+        if (task.count_ <= 0) {
+            return; // 没有挖掘到任何方块
+        }
+
+        auto cost = task.blockConfig_->rawConfig.cost * task.count_;
         FastMiner::getInstance().getPlatformService().as<ServerPlatformService>().getEconomy().reduce(
             task.player_.getUuid(),
             cost

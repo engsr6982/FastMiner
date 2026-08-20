@@ -102,9 +102,9 @@ void MinerTask::execute() {
         auto totalCpuTime = std::chrono::milliseconds::zero(); // 总 CPU 耗时
         auto begin        = std::chrono::high_resolution_clock::now();
 
+        // 起点方块入队作为搜索起点, 玩家自己破坏方块不算一次
         queue_.emplace_back(startPos_, hashedStartPos_);
         visited_.insert(hashedStartPos_);
-        count_++; // 任务启动时玩家自己破坏方块也算一次(任务对齐)
 
         size_t head = 0; // 队列头
         while (count_ < limit_ && head < queue_.size() && canContinue()) {
@@ -117,7 +117,7 @@ void MinerTask::execute() {
             }
 
             // 消费许可额度
-            while (quota_ > 0 && count_ < limit_ && canContinue()) {
+            while (quota_ > 0 && count_ < limit_ && head < queue_.size() && canContinue()) {
                 quota_--;
                 auto const& element = queue_[head++];
                 tryBreakBlock(element);
@@ -128,6 +128,9 @@ void MinerTask::execute() {
         totalCpuTime += std::chrono::duration_cast<std::chrono::milliseconds>(end - begin);
 
         if (canContinue()) {
+            // TODO: return quota
+            // if (head >= queue_.size()) {}
+
             notifyFinished(totalCpuTime.count());
         }
 
@@ -140,6 +143,12 @@ void MinerTask::tryBreakBlock(QueueElement const& element) {
 
     auto const& block = blockSource_.getBlock(pos);
     if (block.isAir()) {
+        return;
+    }
+
+    // 跳过起点方块
+    // 某些边缘场景下，Minecraft 处理延迟导致 isAir 判空失败，导致重复计费
+    if (hashed == hashedStartPos_ || pos == startPos_) [[unlikely]] {
         return;
     }
 
@@ -162,6 +171,9 @@ void MinerTask::tryBreakBlock(QueueElement const& element) {
 
 
 void MinerTask::calculateDurabilityDeduction() {
+    if (count_ <= 0) {
+        return; // 没有破坏方块
+    }
     if (durability_ == 0) {
         deductDamage_ = count_; // 无耐久附魔，按照破坏数量扣除耐久
         return;
