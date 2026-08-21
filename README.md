@@ -58,7 +58,7 @@ lip install github.com/engsr6982/FastMiner#client
   // 你可以在这里调整特定方块的行为，做到针对性覆盖默认配置
   // 比如: 金合欢树长的歪七扭八，默认配置的相邻搜索默认容易遗漏方块，您就可以在这里重写为 3x3x3 Cube 搜索模式
   "overrides": {
-    // 方块配置(白名单模式)，Key 填写方块命名空间
+    // 方块配置，Key 填写方块命名空间
     "minecraft:spruce_log": {
       "name": "云杉木原木", // 方块名称
       "destroyMode": "Default", // 破坏模式，支持: Default 和 Cube。 Default搜索相邻的6个面，Cube 3x3x3搜索
