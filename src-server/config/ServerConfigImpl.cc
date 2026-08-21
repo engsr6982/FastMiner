@@ -204,6 +204,7 @@ void ServerConfigImpl::buildDefault() {
 }
 
 void ServerConfigImpl::buildRuntimeMap() {
+    runtimeConfigMap.clear();
     for (auto& [type, block] : model.blocks) {
         runtimeConfigMap.emplace(getBlockIdCached(type), buildRuntimeSingleBlockConfig(block));
     }
