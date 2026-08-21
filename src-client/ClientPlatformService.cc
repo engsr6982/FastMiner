@@ -4,6 +4,7 @@
 #include "command/FastMinerCommand.h"
 #include "config/ClientConfigImpl.h"
 
+#include "config/StaticGlobalConfigHost.h"
 #include "ll/api/event/EventBus.h"
 #include "ll/api/event/ListenerBase.h"
 #include "ll/api/event/client/ClientJoinLevelEvent.h"
@@ -27,8 +28,14 @@ bool ClientPlatformService::init() {
     impl->mClientJoinLevelListener =
         ll::event::EventBus::getInstance().emplaceListener<ll::event::ClientJoinLevelEvent>(
             [](ll::event::ClientJoinLevelEvent&) {
-                FM_TRACE("Client joined level, registering commands");
+                // 由于初始化时序问题，客户端侧需要等待玩家进入世界后再初始化运行时数据
+                FM_TRACE("Client joined level, building runtime map...");
+                StaticGlobalConfigHost::getInstance().buildRuntimeMap();
+                FM_TRACE("Client joined level, building runtime map... done");
+
+                FM_TRACE("Client joined level, registering commands...");
                 FastMinerCommand::setup();
+                FM_TRACE("Client joined level, registering commands... done");
             }
         );
 

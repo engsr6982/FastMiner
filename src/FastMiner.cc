@@ -48,7 +48,10 @@ bool FastMiner::enable() {
         return false;
     }
 
-    instance.buildRuntimeMap();
+    // 解耦合，不同平台初始化时序不同，需要拆分到平台特定的初始化逻辑中
+    // 客户端侧如果在 enable 阶段调用 buildRuntimeMap，会导致游戏崩溃
+    // 因此 enable 阶段只能是初始化一些全局的配置，不涉及平台特定的初始化
+    // instance.buildRuntimeMap();
 
     mImpl->mPlatformService = std::make_unique<PlatformServiceImpl>();
     mImpl->mPlatformService->init();

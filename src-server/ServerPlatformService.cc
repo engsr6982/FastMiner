@@ -38,6 +38,7 @@ ServerPlatformService::~ServerPlatformService() = default;
 bool ServerPlatformService::init() {
     FastMinerCommand::setup();
     impl->initEconomy();
+    StaticGlobalConfigHost::getInstance().buildRuntimeMap();
     return true;
 }
 
