@@ -7,6 +7,7 @@
 
 #include "mc/deps/core/string/HashedString.h"
 #include <mc/world/level/block/VanillaBlockTypeIds.h>
+#include <tuple>
 
 
 namespace fm::client {
@@ -30,6 +31,8 @@ ll::Expected<> ClientConfigImpl::save(const std::filesystem::path& baseDir) {
 }
 
 void ClientConfigImpl::buildDefault() {
+    model.blockDefault.name = "全局默认配置";
+
     model.overrides.clear();
     model.overrides = {
         // clang-format off
@@ -182,9 +185,12 @@ void ClientConfigImpl::buildDefault() {
 }
 
 void ClientConfigImpl::buildRuntimeMap() {
+    runtimeConfigMap.clear();
     for (auto& [type, ov] : model.overrides) {
         runtimeConfigMap.emplace(getBlockIdCached(type), buildRuntimeSingleBlockConfig(ov));
     }
+
+    default_ = buildRuntimeSingleBlockConfig(model.blockDefault);
 }
 
 RuntimeSingleBlockConfigPtr ClientConfigImpl::buildRuntimeSingleBlockConfig(SingleBlockConfig single) {
@@ -196,6 +202,8 @@ RuntimeSingleBlockConfigPtr ClientConfigImpl::buildRuntimeSingleBlockConfig(Sing
     }
     return rtConfig;
 }
+
+RuntimeSingleBlockConfigPtr ClientConfigImpl::getDefault() { return default_; }
 
 
 void ClientConfigImpl::addSimilarBlock(std::string const& blockType, std::string const& similarBlockType) {

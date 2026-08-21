@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 优化连锁循环逻辑，队列无方块时提前退出
 - 修复幽灵连锁数量 bug #12
 - 修复客户端侧加载 mod 时崩溃 #13
+- 客户端侧添加默认配置支持
 
 ## [0.17.0] - 2026-07-16
 

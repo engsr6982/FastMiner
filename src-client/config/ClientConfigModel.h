@@ -17,10 +17,7 @@ struct BlockOverride {
 
 using BlockOverrides = std::unordered_map<std::string, BlockOverride>;
 
-struct BlockDefault {
-    std::optional<int> limit{1024};
-    DestroyMode        destroyMode{DestroyMode::Default};
-};
+using BlockDefault = BlockOverride;
 
 struct ClientConfigModel {
     static int constexpr SchemaVersion = 3;

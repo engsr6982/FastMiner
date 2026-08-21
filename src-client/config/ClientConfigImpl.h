@@ -4,6 +4,8 @@
 namespace fm::client {
 
 class ClientConfigImpl final : public StaticGlobalConfigHost {
+    RuntimeSingleBlockConfigPtr default_;
+
 public:
     ll::Expected<> load(const std::filesystem::path& baseDir) override;
 
@@ -14,6 +16,8 @@ public:
     void buildRuntimeMap() override;
 
     RuntimeSingleBlockConfigPtr buildRuntimeSingleBlockConfig(SingleBlockConfig single) override;
+
+    RuntimeSingleBlockConfigPtr getDefault();
 
 public:
     /* GUI */
