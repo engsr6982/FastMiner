@@ -1,9 +1,8 @@
 #pragma once
 #include "Global.h"
+#include "core/BFS.h"
 #include "core/MinerTaskContext.h"
 #include "core/MinerUtil.h"
-
-#include "absl/container/flat_hash_set.h"
 
 #include "ll/api/event/EventBus.h"
 
@@ -11,6 +10,7 @@
 #include "mc/world/level/BlockPos.h"
 #include <mc/world/level/block/BlockChangeContext.h>
 
+#include <optional>
 #include <vector>
 
 class Player;
@@ -30,13 +30,9 @@ using TaskID = uint64_t;
  * 每个任务的承载单元
  */
 struct MinerTask {
-    struct Direction {
-        int8_t dx, dy, dz;
-    };
-    struct QueueElement {
-        BlockPos     blockPos;
-        HashedDimPos hashedPos;
-    };
+    /// 预搜索交接数据：已确定将连锁的方块集合
+    using PreSearchData = std::vector<BlockBFS::Pending>;
+    using QueueElement  = BlockBFS::Pending;
 
     enum class State {
         Pending,     // 待处理
@@ -61,15 +57,17 @@ struct MinerTask {
     ll::event::EventBus& eventBus_;       // 事件总线
 
     // BFS
-    std::vector<QueueElement>         queue_{};    // 搜索队列
-    absl::flat_hash_set<HashedDimPos> visited_{};  // 已访问过的方块索引
-    std::vector<Direction> const&     directions_; // 方向
-    MinerDispatcher&                  dispatcher_; // 任务调度器
+    BlockBFS         search_;
+    MinerDispatcher& dispatcher_; // 任务调度器
 
     // 计数
     int count_{0};        // 挖掘次数
     int deductDamage_{0}; // 扣除的耐久度
     int quota_{0};        // 任务执行次数配额
+
+    // 预搜索交接（两阶段）。非空时：挖掘前已由客户端预搜索确定集合，直接按顺序挖掘，不再扩散搜索
+    std::vector<BlockBFS::Pending> preSearchBlocks_{};
+    bool const                     seeded_{false};
 
     using NotifyFinishedHook = std::function<void(MinerTask const& task, long long cpuTime)>;
     NotifyFinishedHook notifyFinishedHook_{nullptr};
@@ -77,12 +75,16 @@ struct MinerTask {
     FM_DISABLE_COPY(MinerTask);
     using Ptr = std::shared_ptr<MinerTask>;
 
-    explicit MinerTask(MinerTaskContext ctx, MinerDispatcher& dispatcher, NotifyFinishedHook finishedHook = nullptr);
+    explicit MinerTask(
+        MinerTaskContext             ctx,
+        MinerDispatcher&             dispatcher,
+        NotifyFinishedHook           finishedHook = nullptr,
+        std::optional<PreSearchData> preSearch    = std::nullopt
+    );
 
     void execute();
     void tryBreakBlock(QueueElement const& element);
     void calculateDurabilityDeduction();
-    void searchAdjacentBlocks(QueueElement const& element);
     void notifyFinished(long long cpuTime);
     void notifyClientBlockUpdate(); // 通知客户端方块更新
 

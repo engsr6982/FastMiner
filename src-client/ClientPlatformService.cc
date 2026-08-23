@@ -9,9 +9,13 @@
 #include "ll/api/event/ListenerBase.h"
 #include "ll/api/event/client/ClientJoinLevelEvent.h"
 #include "ll/api/event/input/KeyInputEvent.h"
+#include "ll/api/event/world/ClientLevelTickEvent.h"
 #include "ll/api/input/KeyRegistry.h"
 
 #include "ll/api/event/render/UIRenderEvent.h"
+
+#include "preview/ChainPreview.h"
+#include "render/ChainOutline.h"
 
 #include "mc/client/game/IClientInstance.h"
 #include "mc/client/gui/CaretMeasureData.h"
@@ -39,8 +43,8 @@ namespace {
 // 注意：RectangleArea 的拷贝构造不可链接（LL 生成头 prevent），只能赋值或原地构造，
 // 因此用 out-param 返回值，避免拷贝。
 bool resolveVanillaTopLeftAnchor(ScreenView const& screenView, RectangleArea& out) {
-    // chat_stack 纵向堆叠（自上而下）：paper_doll_padding → non_centered_gui_padding
-    // → player_position → number_of_days_played。坐标与游玩天数各有独立显示开关
+    // chat_stack 纵向堆叠（自上而下）：paper_doll_padding -> non_centered_gui_padding
+    // -> player_position -> number_of_days_played。坐标与游玩天数各有独立显示开关
     // （#player_position_visible / #number_of_days_played_visible），关闭时控件在
     // 布局中塌缩、区域为空。取「最靠下且非空」者作锚点，横幅落在其正下方，
     // 天然兼容任意开关组合。
@@ -62,7 +66,7 @@ bool resolveVanillaTopLeftAnchor(ScreenView const& screenView, RectangleArea& ou
 }
 
 // 在原版 HUD 左上角布局中绘制「连锁已启用」横幅：整体随原版
-// 「纸娃娃 → 坐标/游玩天数」文本块对齐，横幅放在该文本块正下方，避免覆盖原版信息，
+// 「纸娃娃 -> 坐标/游玩天数」文本块对齐，横幅放在该文本块正下方，避免覆盖原版信息，
 // 且不依赖自算视口尺寸。
 // 样式：黑底 + 原版聊天黄阴影文本，水平居中。
 void drawToggleBanner(ll::event::AfterUIRenderEvent const& event) {
@@ -89,8 +93,8 @@ void drawToggleBanner(ll::event::AfterUIRenderEvent const& event) {
     float const bannerH   = lineHeight + padY * 2.0f;
 
     RectangleArea anchor{};
-    float x0 = 0.0f;
-    float y0 = 0.0f;
+    float         x0 = 0.0f;
+    float         y0 = 0.0f;
     if (resolveVanillaTopLeftAnchor(screenView, anchor)) {
         x0 = anchor.minX();
         y0 = anchor.maxY() + 2.0f; // 紧随原版文本块之下
@@ -129,10 +133,12 @@ void drawToggleBanner(ll::event::AfterUIRenderEvent const& event) {
 } // namespace
 
 struct ClientPlatformService::Impl {
-    ll::event::ListenerPtr mClientJoinLevelListener{nullptr};
-    ll::event::ListenerPtr mKeyInputListener{nullptr};
-    ll::event::ListenerPtr mUIRenderListener{nullptr};
-    std::atomic<bool>      mKeyActivated{false}; // 渲染线程读取、输入线程写入
+    ll::event::ListenerPtr        mClientJoinLevelListener{nullptr};
+    ll::event::ListenerPtr        mKeyInputListener{nullptr};
+    ll::event::ListenerPtr        mLevelTickListener{nullptr};
+    ll::event::ListenerPtr        mUIRenderListener{nullptr};
+    std::unique_ptr<ChainPreview> mPreview;
+    std::atomic<bool>             mKeyActivated{false};
 };
 
 ClientPlatformService::ClientPlatformService() : impl(std::make_unique<Impl>()) {}
@@ -160,7 +166,9 @@ bool ClientPlatformService::init() {
     impl->mKeyInputListener = ll::event::EventBus::getInstance().emplaceListener<ll::event::KeyInputEvent>(
         [this](ll::event::KeyInputEvent& event) {
             if (event.keyCode() == ClientConfigImpl::model.bindKey) {
-                impl->mKeyActivated.store(event.isDown(), std::memory_order_relaxed);
+                bool const down = event.isDown();
+                impl->mKeyActivated.store(down, std::memory_order_relaxed);
+                ChainPreview::setKeyHeld(down);
             }
         }
     );
@@ -172,10 +180,28 @@ bool ClientPlatformService::init() {
         }
     );
 
+    impl->mPreview = std::make_unique<ChainPreview>();
+    ChainPreview::setActive(impl->mPreview.get());
+    ChainOutline::install();
+
+    impl->mLevelTickListener = ll::event::EventBus::getInstance().emplaceListener<ll::event::ClientLevelTickEvent>(
+        [this](ll::event::ClientLevelTickEvent&) {
+            if (impl->mPreview) {
+                impl->mPreview->tick(impl->mKeyActivated.load(std::memory_order_relaxed));
+            }
+        }
+    );
+
     return true;
 }
 
 bool ClientPlatformService::destroy() {
+    ll::event::EventBus::getInstance().removeListener(impl->mLevelTickListener);
+    impl->mLevelTickListener = nullptr;
+    ChainOutline::uninstall();
+    ChainPreview::setActive(nullptr);
+    ChainPreview::setKeyHeld(false);
+    impl->mPreview.reset();
     ll::event::EventBus::getInstance().removeListener(impl->mUIRenderListener);
     ll::event::EventBus::getInstance().removeListener(impl->mClientJoinLevelListener);
     ll::event::EventBus::getInstance().removeListener(impl->mKeyInputListener);

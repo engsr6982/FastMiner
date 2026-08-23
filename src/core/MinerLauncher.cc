@@ -160,11 +160,19 @@ void MinerLauncher::prepareAndLaunchTask(MinerTaskContext ctx) {
     FM_TRACE("limit: " << limit);
     FM_TRACE("Task preparation complete");
 
-    auto task = std::make_shared<MinerTask>(std::move(ctx), *impl->dispatcher, getNotifyFinishedHook(ctx));
+    // 两阶段：客户端预搜索交接（默认无；ServerMinerLauncher 不覆写则行为不变）
+    auto preSearch = tryTakeClientPresearch(ctx);
+    auto hook      = getNotifyFinishedHook(ctx);
+
+    auto task = std::make_shared<MinerTask>(std::move(ctx), *impl->dispatcher, hook, std::move(preSearch));
     impl->dispatcher->launch(task);
 }
 
 MinerTask::NotifyFinishedHook MinerLauncher::getNotifyFinishedHook(MinerTaskContext const& ctx) { return nullptr; }
+
+std::optional<MinerTask::PreSearchData> MinerLauncher::tryTakeClientPresearch(MinerTaskContext const& /* ctx */) {
+    return std::nullopt;
+}
 
 int MinerLauncher::calculateLimit(MinerTaskContext const& ctx) { return calculateDurabilityLimit(ctx); }
 

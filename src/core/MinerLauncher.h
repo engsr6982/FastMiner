@@ -6,6 +6,7 @@
 #include "ll/api/event/player/PlayerDestroyBlockEvent.h"
 
 #include <memory>
+#include <optional>
 
 class Block;
 class Player;
@@ -35,6 +36,13 @@ public:
     virtual MinerTask::NotifyFinishedHook getNotifyFinishedHook(MinerTaskContext const& ctx);
 
     virtual int calculateLimit(MinerTaskContext const& ctx);
+
+    /**
+     * @brief 两阶段交接：挖掘前从客户端预搜索中取已确定的连锁集合。
+     * 默认返回 nullopt（服务端无预搜索，挖掘后直接搜索提交，行为不变）；
+     * 客户端覆写为当 ctx.tiggerPos 与预搜索锚点一致时返回集合。
+     */
+    virtual std::optional<MinerTask::PreSearchData> tryTakeClientPresearch(MinerTaskContext const& ctx);
 
     int calculateDurabilityLimit(MinerTaskContext const& ctx) const;
 };

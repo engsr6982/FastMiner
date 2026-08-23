@@ -32,46 +32,12 @@
 namespace fm {
 
 
-inline static std::vector<MinerTask::Direction> AdjacentDirections = {
-    {1,  0,  0 },
-    {-1, 0,  0 },
-    {0,  1,  0 },
-    {0,  -1, 0 },
-    {0,  0,  1 },
-    {0,  0,  -1}
-};
-
-inline static std::vector<MinerTask::Direction> CubeDirections = {
-    {1,  0,  0 },
-    {-1, 0,  0 },
-    {0,  1,  0 },
-    {0,  -1, 0 },
-    {0,  0,  1 },
-    {0,  0,  -1},
-    {1,  0,  1 },
-    {-1, 0,  1 },
-    {0,  1,  1 },
-    {0,  -1, 1 },
-    {1,  1,  1 },
-    {-1, -1, 1 },
-    {1,  -1, 1 },
-    {-1, 1,  1 },
-    {1,  0,  -1},
-    {-1, 0,  -1},
-    {0,  1,  -1},
-    {0,  -1, -1},
-    {1,  1,  -1},
-    {-1, -1, -1},
-    {1,  -1, -1},
-    {-1, 1,  -1},
-    {1,  1,  0 },
-    {-1, -1, 0 },
-    {1,  -1, 0 },
-    {-1, 1,  0 }
-};
-
-
-MinerTask::MinerTask(MinerTaskContext ctx, MinerDispatcher& dispatcher, NotifyFinishedHook finishedHook)
+MinerTask::MinerTask(
+    MinerTaskContext             ctx,
+    MinerDispatcher&             dispatcher,
+    NotifyFinishedHook           finishedHook,
+    std::optional<PreSearchData> preSearch
+)
 : player_(ctx.player),
   tool_(const_cast<ItemStack&>(player_.getSelectedItem())),
   blockId_(ctx.blockId),
@@ -84,17 +50,15 @@ MinerTask::MinerTask(MinerTaskContext ctx, MinerDispatcher& dispatcher, NotifyFi
   durability_(EnchantUtils::getEnchantLevel(::Enchant::Type::Unbreaking, tool_)),
   //   blockChangeCtx_(ActorChangeContext{&player_}),
   eventBus_(ll::event::EventBus::getInstance()),
-  // TODO: 不再硬编码访问 rawConfig，抽离向量方向为传入配置
-  directions_(blockConfig_->rawConfig.destroyMode == DestroyMode::Cube ? CubeDirections : AdjacentDirections),
+  search_(DimPosHasher{ctx.tiggerDimid}),
   dispatcher_(dispatcher),
+  preSearchBlocks_(preSearch ? std::move(*preSearch) : std::vector<BlockBFS::Pending>{}),
+  seeded_(!preSearchBlocks_.empty()),
   notifyFinishedHook_(finishedHook) {
     blockChangeCtx_.mContextSource = ActorChangeContext{&player_};
 }
 
 void MinerTask::execute() {
-    queue_.reserve(limit_);
-    visited_.reserve(limit_ * 2);
-
     state_ = State::Running;
     ll::coro::keepThis([this]() -> ll::coro::CoroTask<> {
         auto awaiter = MinerPermitAwaiter{this, dispatcher_};
@@ -102,12 +66,41 @@ void MinerTask::execute() {
         auto totalCpuTime = std::chrono::milliseconds::zero(); // 总 CPU 耗时
         auto begin        = std::chrono::high_resolution_clock::now();
 
-        // 起点方块入队作为搜索起点, 玩家自己破坏方块不算一次
-        queue_.emplace_back(startPos_, hashedStartPos_);
-        visited_.insert(hashedStartPos_);
+        if (seeded_) {
+            // 预搜索交接：结果集已确定（含哈希键），无损接管、不再扩散搜索
+            if (static_cast<int>(preSearchBlocks_.size()) > limit_) {
+                preSearchBlocks_.resize(limit_);
+            }
+            search_.adopt(std::move(preSearchBlocks_));
+        } else {
+            // 起点方块入队作为搜索起点，玩家自己破坏方块不算一次
+            search_.reset(startPos_, hashedStartPos_);
+            // 无界搜索（挖掘停止由 count_ < limit_ 控制）：不限制搜索量，提前扩容减少 rehash
+            search_.reserve(static_cast<size_t>(limit_) * 2, static_cast<size_t>(limit_) * 4);
+        }
 
-        size_t head = 0; // 队列头
-        while (count_ < limit_ && head < queue_.size() && canContinue()) {
+        // onPop     -- 出队元素消费（破坏），直接透传 Pending 引用
+        // match     -- 方块匹配谓词（主方块 + 相似方块）
+        // neighbors -- 方向扩展（Default 6 相邻 / Cube 3x3x3，方向组单一来源）
+        auto onPop = [this](BlockSource&, BlockBFS::Pending const& element) { tryBreakBlock(element); };
+        auto match = [this](BlockSource& bs, BlockPos const& p) -> bool {
+            auto const& block = bs.getBlock(p);
+            auto const  id    = block.getBlockItemId();
+            return id == blockId_ || blockConfig_->similarBlock.contains(id);
+        };
+        auto neighbors = [this](BlockPos const& p, auto&& emit) {
+            auto const& dirs =
+                blockConfig_->rawConfig.destroyMode == DestroyMode::Cube ? cubeDirections() : adjacentDirections();
+            for (auto d : dirs) {
+                emit(BlockPos{p.x + d.dx, p.y + d.dy, p.z + d.dz});
+            }
+        };
+
+        // 主循环：
+        // 外层按「挖掘限额 + 队列非空 + 未打断」推进；内层以调度许可配额逐个消费元素，
+        // 每个元素消费前后都复查 配额 / count 上限 / 打断 -- 挖掘达到 limit 立即停止
+        // ，打断响应及时，已确定的交接集合同样受配额节流。
+        while (count_ < limit_ && !search_.exhausted() && canContinue()) {
             if (quota_ == 0) {
                 auto end      = std::chrono::high_resolution_clock::now();
                 totalCpuTime += std::chrono::duration_cast<std::chrono::milliseconds>(end - begin);
@@ -116,21 +109,21 @@ void MinerTask::execute() {
                 begin = std::chrono::high_resolution_clock::now(); // 重置开始时间
             }
 
-            // 消费许可额度
-            while (quota_ > 0 && count_ < limit_ && head < queue_.size() && canContinue()) {
+            while (quota_ > 0 && count_ < limit_ && !search_.exhausted() && canContinue()) {
                 quota_--;
-                auto const& element = queue_[head++];
-                tryBreakBlock(element);
-                searchAdjacentBlocks(element);
+                if (seeded_) {
+                    // 交接：集合已确定，仅按序挖掘，不再扩散
+                    search_.nextPop(blockSource_, onPop);
+                } else {
+                    // 边挖边搜：出队元素先消费（破坏）再方向扩展
+                    search_.next(blockSource_, onPop, match, neighbors);
+                }
             }
         }
         auto end      = std::chrono::high_resolution_clock::now();
         totalCpuTime += std::chrono::duration_cast<std::chrono::milliseconds>(end - begin);
 
         if (canContinue()) {
-            // TODO: return quota
-            // if (head >= queue_.size()) {}
-
             notifyFinished(totalCpuTime.count());
         }
 
@@ -193,21 +186,6 @@ void MinerTask::calculateDurabilityDeduction() {
     deductDamage_ = dist(rng);
 }
 
-void MinerTask::searchAdjacentBlocks(QueueElement const& element) {
-    auto const& pos = element.blockPos;
-    for (auto [dx, dy, dz] : directions_) {
-        BlockPos adjacent{pos.x + dx, pos.y + dy, pos.z + dz};
-        auto     hashed = miner_util::hashDimensionPosition(adjacent, dimension_);
-        if (visited_.insert(hashed).second) {
-            auto const& block = blockSource_.getBlock(adjacent);
-            auto const  id    = block.getBlockItemId();
-            if (id == blockId_ || blockConfig_->similarBlock.contains(id)) {
-                queue_.emplace_back(std::move(adjacent), std::move(hashed)); // 加入搜索队列
-            }
-        }
-    }
-}
-
 void MinerTask::notifyFinished(long long cpuTime) {
     ll::coro::keepThis([this, cpuTime]() -> ll::coro::CoroTask<> {
         co_await ll::chrono::ticks{1};
@@ -232,10 +210,10 @@ void MinerTask::notifyFinished(long long cpuTime) {
 void MinerTask::notifyClientBlockUpdate() {
     // 任务已完成，可以把资源转移走
     // 对于 Client Side，MinerLauncher 拦截了客户端本地请求，所以这里是服务端侧资源，向客户端更新
-    ll::coro::keepThis([queue = std::move(queue_), &bs = blockSource_]() -> ll::coro::CoroTask<> {
+    ll::coro::keepThis([queue = search_.releaseQueue(), &bs = blockSource_]() -> ll::coro::CoroTask<> {
         co_await ll::chrono::ticks{1};
-        for (auto const& [pos, _] : queue) {
-            bs.neighborChanged(pos, pos);
+        for (auto const& element : queue) {
+            bs.neighborChanged(element.blockPos, element.blockPos);
         }
         co_return;
     }).launch(ll::thread::ServerThreadExecutor::getDefault());
