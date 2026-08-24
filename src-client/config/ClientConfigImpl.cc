@@ -12,7 +12,7 @@
 
 namespace fm::client {
 
-constexpr std::string_view kFileName = "Config.json";
+constexpr std::string_view kFileName = "ClientConfig.json";
 
 ll::Expected<> ClientConfigImpl::load(const std::filesystem::path& baseDir) {
     namespace fs = std::filesystem;
