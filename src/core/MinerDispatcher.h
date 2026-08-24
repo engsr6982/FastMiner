@@ -46,6 +46,11 @@ public:
 
     void tick();
 
+    /**
+     * @brief 关停清理：中断所有在途任务，恢复挂起协程由状态机自检退出后清空队列
+     */
+    void shutdown();
+
 private:
     absl::flat_hash_set<HashedDimPos>              processingBlocks; // 正在处理的方块
     absl::flat_hash_map<mce::UUID, MinerTask::Ptr> tasks_;           // 任务队列

@@ -13,14 +13,15 @@ class Player;
 
 namespace fm {
 
+class MinerDispatcher;
 
 class MinerLauncher {
     struct Impl;
     std::unique_ptr<Impl> impl;
 
-    void onPlayerDestroyBlock(ll::event::PlayerDestroyBlockEvent& ev);
+    void onPlayerDestroyBlock(ll::event::PlayerDestroyBlockEvent& ev, std::shared_ptr<MinerDispatcher> dispatcher);
     bool canDestroyBlockWithMcApi(Player& player, Block const& block) const;
-    void prepareAndLaunchTask(MinerTaskContext ctx);
+    void prepareAndLaunchTask(MinerTaskContext ctx, MinerDispatcher& dispatcher);
 
 public:
     FM_DISABLE_COPY_MOVE(MinerLauncher);

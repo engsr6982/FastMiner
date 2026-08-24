@@ -7,16 +7,7 @@
 namespace fm {
 
 MinerDispatcher::MinerDispatcher() { processingBlocks.reserve(128); }
-MinerDispatcher::~MinerDispatcher() {
-    for (auto& [_, task] : tasks_) {
-        task->interrupt();
-    }
-    for (auto& [t, h] : pending_) {
-        t->interrupt();
-        while (!h.done()) h.resume();
-        h.destroy();
-    }
-}
+MinerDispatcher::~MinerDispatcher() { shutdown(); }
 
 bool MinerDispatcher::canLaunchTask(Player& player) const { return !tasks_.contains(player.getUuid()); }
 
@@ -39,6 +30,21 @@ void MinerDispatcher::interruptPlayerTask(Player& player) {
 }
 
 void MinerDispatcher::onTaskFinished(MinerTask* task) { tasks_.erase(task->player_.getUuid()); }
+
+void MinerDispatcher::shutdown() {
+    for (auto& [_, task] : tasks_) {
+        task->interrupt();
+    }
+    for (auto& [t, h] : pending_) {
+        t->interrupt();
+        while (!h.done()) {
+            h.resume();
+        }
+        h.destroy();
+    }
+    tasks_.clear();
+    pending_.clear();
+}
 
 void MinerDispatcher::tick() {
     static constexpr int Burst = 64; // 单次最大突发量(Burst)

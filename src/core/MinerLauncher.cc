@@ -33,47 +33,63 @@
 namespace fm {
 
 struct MinerLauncher::Impl {
-    std::unique_ptr<MinerDispatcher> dispatcher; // 调度器
+    // 调度器用共享所有权管理：事件 listener 与调度协程都持强引用，
+    // 保证关服时即使本对象已销毁，在途事件也不会访问已释放的调度器
+    std::shared_ptr<MinerDispatcher> dispatcher;
     ll::event::ListenerPtr           playerDestroyBlockListener;
     ll::event::ListenerPtr           playerDisconnectListener;
-    std::atomic<bool>                abort; // 是否需要中止
-    ll::coro::InterruptableSleep     sleep; // 中断等待
+
+    struct Loop {
+        std::atomic<bool>            stopper{false};
+        ll::coro::InterruptableSleep sleep;
+    };
+    std::shared_ptr<Loop> loop{std::make_shared<Loop>()};
 };
 
 MinerLauncher::MinerLauncher() : impl(std::make_unique<Impl>()) {
-    impl->dispatcher = std::make_unique<MinerDispatcher>();
+    impl->dispatcher = std::make_shared<MinerDispatcher>();
 
-    auto& bus                        = ll::event::EventBus::getInstance();
+    auto& bus        = ll::event::EventBus::getInstance();
+    auto  dispatcher = impl->dispatcher;
+    auto  loop       = impl->loop;
+
     impl->playerDestroyBlockListener = bus.emplaceListener<ll::event::PlayerDestroyBlockEvent>(
-        [&](auto& ev) { onPlayerDestroyBlock(ev); },
+        [this, dispatcher, loop](auto& ev) {
+            if (loop->stopper) {
+                return; // 已进入关停流程，不再启动新任务
+            }
+            onPlayerDestroyBlock(ev, dispatcher);
+        },
         ll::event::EventPriority::Low
     );
-    impl->playerDisconnectListener = bus.emplaceListener<ll::event::PlayerDisconnectEvent>([&](auto& ev) {
-        auto& player = ev.self();
-        impl->dispatcher->interruptPlayerTask(player);
+    impl->playerDisconnectListener = bus.emplaceListener<ll::event::PlayerDisconnectEvent>([dispatcher](auto& ev) {
+        dispatcher->interruptPlayerTask(ev.self());
     });
 
-    impl->abort = false;
-    ll::coro::keepThis([this]() -> ll::coro::CoroTask<> {
-        while (!impl->abort) {
-            co_await impl->sleep.sleepFor(ll::chrono::ticks{1});
-            if (impl->abort) {
+    ll::coro::keepThis([dispatcher, loop]() -> ll::coro::CoroTask<> {
+        while (!loop->stopper) {
+            co_await loop->sleep.sleepFor(ll::chrono::ticks{1});
+            if (loop->stopper) {
                 break;
             }
-            impl->dispatcher->tick();
+            dispatcher->tick();
         }
         co_return;
     }).launch(ll::thread::ServerThreadExecutor::getDefault());
 }
 
 MinerLauncher::~MinerLauncher() {
-    impl->abort = true;
-    impl->sleep.interrupt(true);
+    impl->loop->stopper = true;
+    impl->loop->sleep.interrupt(true);
     ll::event::EventBus::getInstance().removeListener(impl->playerDestroyBlockListener);
     ll::event::EventBus::getInstance().removeListener(impl->playerDisconnectListener);
+    impl->dispatcher->shutdown();
 }
 
-void MinerLauncher::onPlayerDestroyBlock(ll::event::PlayerDestroyBlockEvent& ev) {
+void MinerLauncher::onPlayerDestroyBlock(
+    ll::event::PlayerDestroyBlockEvent& ev,
+    std::shared_ptr<MinerDispatcher>    dispatcher
+) {
     auto& rawPos = ev.pos();
     auto& player = ev.self();
     auto  dimId  = player.getDimensionId();
@@ -86,11 +102,11 @@ void MinerLauncher::onPlayerDestroyBlock(ll::event::PlayerDestroyBlockEvent& ev)
     }
 
     auto hashedPos = miner_util::hashDimensionPosition(rawPos, dimId);
-    if (ev.isCancelled() || impl->dispatcher->isProcessing(hashedPos)) {
+    if (ev.isCancelled() || dispatcher->isProcessing(hashedPos)) {
         FM_TRACE("event cancelled or processing");
         return; // 已处理 / 正在处理
     }
-    if (!impl->dispatcher->canLaunchTask(player)) {
+    if (!dispatcher->canLaunchTask(player)) {
         FM_TRACE("The player has unfinished tasks.");
         return;
     }
@@ -126,9 +142,12 @@ void MinerLauncher::onPlayerDestroyBlock(ll::event::PlayerDestroyBlockEvent& ev)
         .blockSource = blockSource,
         .rtConfig    = std::move(rtConfig)
     };
-    ll::coro::keepThis([this, ctx = std::move(ctx)]() -> ll::coro::CoroTask<> {
+    ll::coro::keepThis([this, dispatcher, loop = impl->loop, ctx = std::move(ctx)]() -> ll::coro::CoroTask<> {
         co_await ll::chrono::ticks{1};
-        this->prepareAndLaunchTask(std::move(ctx));
+        if (loop->stopper) {
+            co_return; // 已关停则不再启动延时任务
+        }
+        this->prepareAndLaunchTask(std::move(ctx), *dispatcher);
         co_return;
     }).launch(ll::thread::ServerThreadExecutor::getDefault());
 }
@@ -143,7 +162,7 @@ RuntimeSingleBlockConfigPtr MinerLauncher::loadRuntimeSingleBlockConfig(std::str
     return StaticGlobalConfigHost::getRuntimeSingleBlockConfig(blockType);
 }
 
-void MinerLauncher::prepareAndLaunchTask(MinerTaskContext ctx) {
+void MinerLauncher::prepareAndLaunchTask(MinerTaskContext ctx, MinerDispatcher& dispatcher) {
     auto& block = ctx.blockSource.getBlock(ctx.tiggerPos);
     if (!block.isAir()) {
         FM_TRACE("block is not air");
@@ -164,8 +183,8 @@ void MinerLauncher::prepareAndLaunchTask(MinerTaskContext ctx) {
     auto preSearch = tryTakeClientPresearch(ctx);
     auto hook      = getNotifyFinishedHook(ctx);
 
-    auto task = std::make_shared<MinerTask>(std::move(ctx), *impl->dispatcher, hook, std::move(preSearch));
-    impl->dispatcher->launch(task);
+    auto task = std::make_shared<MinerTask>(std::move(ctx), dispatcher, hook, std::move(preSearch));
+    dispatcher.launch(task);
 }
 
 MinerTask::NotifyFinishedHook MinerLauncher::getNotifyFinishedHook(MinerTaskContext const& ctx) { return nullptr; }
