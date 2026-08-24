@@ -24,6 +24,7 @@
 #include "mc/world/level/block/BlockChangeContext.h"
 #include "mc/world/level/block/registry/BlockTypeRegistry.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <vector>
 
@@ -56,6 +57,9 @@ MinerTask::MinerTask(
   seeded_(!preSearchBlocks_.empty()),
   notifyFinishedHook_(finishedHook) {
     blockChangeCtx_.mContextSource = ActorChangeContext{&player_};
+    // 预分配待提交批容量（每批至多一个 tick 配额块数），避免 flush 清空后反复 realloc
+    auto const& cfg = StaticGlobalConfigHost::getDispatcherConfig();
+    pendingUpdate_.reserve(std::min(limit_, cfg.globalBlockLimitPerTick));
 }
 
 void MinerTask::execute() {
@@ -119,9 +123,14 @@ void MinerTask::execute() {
                     search_.next(blockSource_, onPop, match, neighbors);
                 }
             }
+            // 分段提交：每 tick 挖掘批次结束后统一补发邻居更新，避免逐块广播
+            flushBlockUpdates();
         }
         auto end      = std::chrono::high_resolution_clock::now();
         totalCpuTime += std::chrono::duration_cast<std::chrono::milliseconds>(end - begin);
+
+        // 尾部提交：正常完成或被打断都需清空待更新集合，防止残留悬空方块状态
+        flushBlockUpdates();
 
         if (canContinue()) {
             notifyFinished(totalCpuTime.count());
@@ -160,6 +169,9 @@ void MinerTask::tryBreakBlock(QueueElement const& element) {
     // blockSource_.removeBlock(pos, blockChangeCtx_);
     static auto& air = BlockTypeRegistry::get().getDefaultBlockState("minecraft:air");
     blockSource_.setBlock(pos, air, 2, nullptr, blockChangeCtx_);
+
+    // 挖掘阶段仅广播(flags=2)走游戏子区块批量网络同步；邻居更新延后到批边界统一提交
+    pendingUpdate_.push_back(pos);
 }
 
 
@@ -200,23 +212,19 @@ void MinerTask::notifyFinished(long long cpuTime) {
             notifyFinishedHook_(*this, cpuTime);
         }
 
-        notifyClientBlockUpdate();
         state_ = State::Finished;
         dispatcher_.onTaskFinished(this);
         co_return;
     }).launch(ll::thread::ServerThreadExecutor::getDefault());
 }
 
-void MinerTask::notifyClientBlockUpdate() {
-    // 任务已完成，可以把资源转移走
-    // 对于 Client Side，MinerLauncher 拦截了客户端本地请求，所以这里是服务端侧资源，向客户端更新
-    ll::coro::keepThis([queue = search_.releaseQueue(), &bs = blockSource_]() -> ll::coro::CoroTask<> {
-        co_await ll::chrono::ticks{1};
-        for (auto const& element : queue) {
-            bs.neighborChanged(element.blockPos, element.blockPos);
-        }
-        co_return;
-    }).launch(ll::thread::ServerThreadExecutor::getDefault());
+void MinerTask::flushBlockUpdates() {
+    // 逐位置通知 6 邻居：等价于官方 removeBlock(flags=3) 的世界更新部分，但整批在批边界统一完成，
+    // 邻居基于最终空气态只处理一次。updateNeighborsAt 内部会跳过空气，故批内相邻位置不会产生无效调用。
+    for (auto const& pos : pendingUpdate_) {
+        blockSource_.updateNeighborsAt(pos);
+    }
+    pendingUpdate_.clear();
 }
 
 void MinerTask::interrupt() { state_ = State::Interrupted; }

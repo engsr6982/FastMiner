@@ -65,6 +65,9 @@ struct MinerTask {
     int deductDamage_{0}; // 扣除的耐久度
     int quota_{0};        // 任务执行次数配额
 
+    // 本批次已挖掘尚未提交邻居更新的方块，批边界 flushBlockUpdates() 清空
+    std::vector<BlockPos> pendingUpdate_{};
+
     // 预搜索交接（两阶段）。非空时：挖掘前已由客户端预搜索确定集合，直接按顺序挖掘，不再扩散搜索
     std::vector<BlockBFS::Pending> preSearchBlocks_{};
     bool const                     seeded_{false};
@@ -86,7 +89,12 @@ struct MinerTask {
     void tryBreakBlock(QueueElement const& element);
     void calculateDurabilityDeduction();
     void notifyFinished(long long cpuTime);
-    void notifyClientBlockUpdate(); // 通知客户端方块更新
+    /**
+     * @brief 提交本批次(本 tick)挖掘方块的世界更新
+     * setBlock 阶段仅广播(flags=2)以利用游戏子区块批量网络同步，此处补上
+     * 被跳过的邻居通知(updateNeighborsAt)，保证火把/藤蔓/液体/红石等正确响应。
+     */
+    void flushBlockUpdates();
 
     void interrupt();
     bool isInterrupted() const;
