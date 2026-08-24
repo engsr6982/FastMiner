@@ -1,55 +1,78 @@
-name: Bug Report
-description: Create a report to help us improve
+name: Bug Report | 错误报告
+description: Create a report to help us improve | 创建报告以帮助我们改进
 title: "[Bug]: "
 labels: ["bug"]
 body:
-  - type: textarea
+  - type: dropdown
+    id: execution-side
     attributes:
-      label: Describe the bug
-      description: A clear and concise description of what the bug is.
+      label: Execution Side | 执行侧
+      description: Where did the bug occur? | 崩溃或错误发生在客户端还是服务端？
+      options:
+        - Server Side | 服务端侧
+        - Client Side | 客户端侧
+    validations:
+      required: true
+
+  - type: dropdown
+    id: binary-source
+    attributes:
+      label: Artifact Source | 产物来源
+      description: Where did you get the plugin binary? (Self-compiled versions will cause PDB/GUID mismatch) | 你的插件二进制文件来自哪里？（自构建版本会导致 PDB/GUID 不匹配，影响调试）
+      options:
+        - Official Release | 官方 Release 发布页
+        - Official Actions | 官方 GitHub Actions 构建
+        - Other (Self-compiled, third-party, etc.) | 其它（自构建/第三方分发/私作修改等）
     validations:
       required: true
 
   - type: textarea
     attributes:
-      label: To Reproduce
-      description: Steps to reproduce the behavior.
+      label: Describe the bug | 问题描述
+      description: A clear and concise description of what the bug is. | 请清晰简明地描述该错误。
     validations:
       required: true
 
   - type: textarea
     attributes:
-      label: Expected behavior
-      description: A clear and concise description of what you expected to happen.
+      label: To Reproduce | 复现步骤
+      description: Steps to reproduce the behavior. | 复现该行为的具体步骤。
     validations:
       required: true
 
   - type: textarea
     attributes:
-      label: Screenshots
-      description: If applicable, add screenshots to help explain your problem.
-    
-  - type: input
-    attributes:
-      label: Platform
-      description: The platform you are using. (e.g. Windows 10)
-
-  - type: input
-    attributes:
-      label: BDS Version
-      description: The version of BDS you are using. (e.g. 1.20.32.1)
-
-  - type: input
-    attributes:
-      label: LeviLamina Version
-      description: The version of LeviLamina you are using. (e.g. 1.0.0)
-
-  - type: input
-    attributes:
-      label: Version
-      description: The version of the plugin you are using. (e.g. 1.0.0)
+      label: Expected behavior | 期望行为
+      description: A clear and concise description of what you expected to happen. | 请清晰简明地描述你期望发生的事情。
+    validations:
+      required: true
 
   - type: textarea
     attributes:
-      label: Additional context
-      description: Add any other context about the problem here.
+      label: Screenshots | 截图/日志
+      description: If applicable, add screenshots or logs to help explain your problem. | 如有必要，请提供相关截图或日志以帮助说明问题。
+
+  - type: input
+    attributes:
+      label: Platform | 操作系统平台
+      description: The platform you are using. (e.g. Windows 10) | 你正在使用的操作系统（例如 Windows 10）
+
+  - type: input
+    attributes:
+      label: BDS Version | BDS 版本
+      description: The version of BDS you are using. (e.g. 1.20.32.1) | 你正在使用的 BDS 版本（例如 1.20.32.1）
+
+  - type: input
+    attributes:
+      label: LeviLamina Version | LeviLamina 版本
+      description: The version of LeviLamina you are using. (e.g. 1.0.0) | 你正在使用的 LeviLamina 版本（例如 1.0.0）
+
+  - type: input
+    attributes:
+      label: Version | 插件版本
+      description: The version of the plugin you are using. (e.g. 1.0.0) | 你正在使用的插件版本（例如 1.0.0）
+
+  - type: textarea
+    attributes:
+      label: Additional context | 补充信息
+      description: Add any other context about the problem here. | 在此处添加关于该问题的任何其他上下文信息。
