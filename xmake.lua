@@ -8,7 +8,7 @@ add_requires("levilamina 26.20.7", {configs = {target_type = get_config("target_
 add_requires("ll-bstats 0.5.0", {configs = {target_type = get_config("target_type")}})
 
 if is_config("target_type", "server") then
-    add_requires("economy_bridge 0.5.0")
+    add_requires("economy_bridge 2026.8.29")
 end
 
 add_requires("levibuildscript")
