@@ -2,7 +2,7 @@
     "format_version": 3,
     "format_uuid": "289f771f-2c9a-4d73-9f3f-8492495a924d",
     "tooth": "github.com/engsr6982/FastMiner",
-    "version": "0.17.0",
+    "version": "0.18.0",
     "info": {
         "name": "FastMiner",
         "description": "高性能连锁采集, 支持 Server 和 Client",
