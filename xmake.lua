@@ -67,9 +67,9 @@ target("FastMiner") -- Change this to your mod name.
     end
 
     if is_mode("release") then
-        set_policy("build.optimization.lto", true) -- LTO
+        -- set_policy("build.optimization.lto", true) -- LTO
         set_optimize("fastest") -- O3 (LLVM)
-    end 
+    end
 
     if is_config("target_type", "server") then
         add_defines("LL_PLAT_S")
