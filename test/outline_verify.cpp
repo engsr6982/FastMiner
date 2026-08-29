@@ -1,4 +1,4 @@
-// 独立验证程序：复刻 ChainOutline::rebuildEdges 的面区域周界算法
+// 独立验证程序：复刻 VoxelOutlineRenderer::rebuildEdges 的面区域周界算法
 // 编译：clang++ -O2 -std=c++20 outline_verify.cpp -o outline_verify.exe
 // 用法：设置好下方案例后运行，输出每条线段端点与法线，人工核对。
 
@@ -12,7 +12,7 @@
 
 static bool traceEmit = false;
 
-// ---- 以下代码与 ChainOutline.cc 转写一致（std 容器替代 absl） ----
+// ---- 以下代码与 VoxelOutlineRenderer.cc 转写一致（std 容器替代 absl） ----
 constexpr int kLocalOffset = 2048;
 
 inline uint64_t packCell(int x, int y, int z) {

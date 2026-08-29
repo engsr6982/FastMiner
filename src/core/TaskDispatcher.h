@@ -1,12 +1,16 @@
 #pragma once
 #include "Global.h"
-#include "core/MinerTask.h"
+#include "core/MinerUtil.h"
+#include "core/TaskControl.h"
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "mc/platform/UUID.h"
 
 #include <coroutine>
 #include <cstddef>
+#include <memory>
+#include <vector>
 
 
 namespace fm {
@@ -23,12 +27,15 @@ namespace fm {
  *  int quota_per_task = max(1, floor(globalBlockLimitPerTick / active_tasks));
  *
  * @note 最大恢复任务受 maxResumeTasksPerTick 限制(避免瞬间卡死线程)
+ *
+ * @note 同一调度器实例可同时承载 ChainTask / UseTask 等不同类型任务，
+ *       它们共享同一个全局每 tick 配额池。任务以非虚 TaskControl 统一持有。
  */
-class MinerDispatcher final {
+class TaskDispatcher final {
 public:
-    FM_DISABLE_COPY_MOVE(MinerDispatcher);
-    explicit MinerDispatcher();
-    ~MinerDispatcher();
+    FM_DISABLE_COPY_MOVE(TaskDispatcher);
+    explicit TaskDispatcher();
+    ~TaskDispatcher();
 
     inline bool isProcessing(HashedDimPos pos) const { return processingBlocks.contains(pos); }
     inline void insertProcessing(HashedDimPos pos) { processingBlocks.insert(pos); }
@@ -36,13 +43,21 @@ public:
 
     bool canLaunchTask(Player& player) const;
 
-    void launch(MinerTask::Ptr task);
+    template <typename T>
+        requires std::derived_from<T, TaskControl>
+    void launch(std::shared_ptr<T> task) {
+        if (!canLaunchTask(task->player_)) [[unlikely]] {
+            throw std::runtime_error("Player already has a task running");
+        }
+        tasks_.emplace(task->player_.getUuid(), task);
+        task->execute();
+    }
 
-    void enqueue(MinerTask* task, std::coroutine_handle<> h);
+    void enqueue(TaskControl* task, std::coroutine_handle<> h);
 
     void interruptPlayerTask(Player& player);
 
-    void onTaskFinished(MinerTask* task);
+    void onTaskFinished(TaskControl* task);
 
     void tick();
 
@@ -52,13 +67,13 @@ public:
     void shutdown();
 
 private:
-    absl::flat_hash_set<HashedDimPos>              processingBlocks; // 正在处理的方块
-    absl::flat_hash_map<mce::UUID, MinerTask::Ptr> tasks_;           // 任务队列
+    absl::flat_hash_set<HashedDimPos>                            processingBlocks;
+    absl::flat_hash_map<mce::UUID, std::shared_ptr<TaskControl>> tasks_;
     struct Pending {
-        MinerTask*              task;
+        TaskControl*            task;
         std::coroutine_handle<> h;
     };
-    std::vector<Pending> pending_; // 等待执行的任务
+    std::vector<Pending> pending_;
 };
 
 

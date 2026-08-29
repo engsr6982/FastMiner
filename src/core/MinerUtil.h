@@ -11,7 +11,7 @@
 namespace fm {
 
 
-using HashedDimPos = size_t; // Hashed dimension position
+using HashedDimPos = size_t;
 
 namespace miner_util {
 
@@ -42,19 +42,6 @@ inline constexpr HashedDimPos hashDimensionPosition(T const& pos, int dim) {
     h2        *= 0xc4ceb9fe1a85ec53ull;
     h2        ^= h2 >> 33;
     return static_cast<HashedDimPos>(h2);
-}
-
-inline bool hasUnbreakable(ItemStack const& item) {
-    static constexpr std::string_view unbreakable = "Unbreakable";
-
-    auto& nbt = item.mUserData;
-    if (!nbt) {
-        return false;
-    }
-    if (nbt->contains(unbreakable)) {
-        return (*nbt)[unbreakable].get<ByteTag>();
-    }
-    return false;
 }
 
 } // namespace miner_util

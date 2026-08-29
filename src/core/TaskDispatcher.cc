@@ -1,27 +1,18 @@
-#include "MinerDispatcher.h"
+#include "TaskDispatcher.h"
 #include "config/StaticGlobalConfigHost.h"
-#include "core/MinerTask.h"
 
 #include "mc/world/actor/player/Player.h"
 
 namespace fm {
 
-MinerDispatcher::MinerDispatcher() { processingBlocks.reserve(128); }
-MinerDispatcher::~MinerDispatcher() { shutdown(); }
+TaskDispatcher::TaskDispatcher() { processingBlocks.reserve(128); }
+TaskDispatcher::~TaskDispatcher() { shutdown(); }
 
-bool MinerDispatcher::canLaunchTask(Player& player) const { return !tasks_.contains(player.getUuid()); }
+bool TaskDispatcher::canLaunchTask(Player& player) const { return !tasks_.contains(player.getUuid()); }
 
-void MinerDispatcher::launch(MinerTask::Ptr task) {
-    if (!canLaunchTask(task->player_)) {
-        throw std::runtime_error("Player already has a task running");
-    }
-    tasks_.emplace(task->player_.getUuid(), task);
-    task->execute();
-}
+void TaskDispatcher::enqueue(TaskControl* task, std::coroutine_handle<> h) { pending_.push_back({task, h}); }
 
-void MinerDispatcher::enqueue(MinerTask* task, std::coroutine_handle<> h) { pending_.push_back({task, h}); }
-
-void MinerDispatcher::interruptPlayerTask(Player& player) {
+void TaskDispatcher::interruptPlayerTask(Player& player) {
     auto iter = tasks_.find(player.getUuid());
     if (iter != tasks_.end()) {
         iter->second->interrupt();
@@ -29,9 +20,9 @@ void MinerDispatcher::interruptPlayerTask(Player& player) {
     }
 }
 
-void MinerDispatcher::onTaskFinished(MinerTask* task) { tasks_.erase(task->player_.getUuid()); }
+void TaskDispatcher::onTaskFinished(TaskControl* task) { tasks_.erase(task->player_.getUuid()); }
 
-void MinerDispatcher::shutdown() {
+void TaskDispatcher::shutdown() {
     for (auto& [_, task] : tasks_) {
         task->interrupt();
     }
@@ -46,8 +37,9 @@ void MinerDispatcher::shutdown() {
     pending_.clear();
 }
 
-void MinerDispatcher::tick() {
-    static constexpr int Burst = 64; // 单次最大突发量(Burst)
+void TaskDispatcher::tick() {
+    // 限制单次授予配额，防止单个任务吞掉整池额度导致其它任务饥饿
+    static constexpr int Burst = 64;
 
     auto const& cfg = StaticGlobalConfigHost::getDispatcherConfig();
 
@@ -71,7 +63,6 @@ void MinerDispatcher::tick() {
             resumed++;
         }
     }
-    // 清理已恢复的协程
     pending_.erase(pending_.begin(), pending_.begin() + resumed);
 }
 

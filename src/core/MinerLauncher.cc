@@ -1,11 +1,9 @@
-#pragma once
 #include "core/MinerLauncher.h"
 #include "absl/container/flat_hash_set.h"
 #include "config/StaticGlobalConfigHost.h"
-#include "core/MinerDispatcher.h"
-#include "core/MinerTask.h"
-#include "core/MinerTaskContext.h"
-#include "core/MinerUtil.h"
+#include "core/ChainTask.h"
+#include "core/TaskBase.h"
+#include "core/TaskDispatcher.h"
 #include "utils/McUtils.h"
 
 
@@ -27,7 +25,6 @@
 #include <atomic>
 #include <limits>
 #include <memory>
-#include <mutex>
 #include <utility>
 
 namespace fm {
@@ -35,9 +32,9 @@ namespace fm {
 struct MinerLauncher::Impl {
     // 调度器用共享所有权管理：事件 listener 与调度协程都持强引用，
     // 保证关服时即使本对象已销毁，在途事件也不会访问已释放的调度器
-    std::shared_ptr<MinerDispatcher> dispatcher;
-    ll::event::ListenerPtr           playerDestroyBlockListener;
-    ll::event::ListenerPtr           playerDisconnectListener;
+    std::shared_ptr<TaskDispatcher> dispatcher;
+    ll::event::ListenerPtr          playerDestroyBlockListener;
+    ll::event::ListenerPtr          playerDisconnectListener;
 
     struct Loop {
         std::atomic<bool>            stopper{false};
@@ -47,7 +44,7 @@ struct MinerLauncher::Impl {
 };
 
 MinerLauncher::MinerLauncher() : impl(std::make_unique<Impl>()) {
-    impl->dispatcher = std::make_shared<MinerDispatcher>();
+    impl->dispatcher = std::make_shared<TaskDispatcher>();
 
     auto& bus        = ll::event::EventBus::getInstance();
     auto  dispatcher = impl->dispatcher;
@@ -86,9 +83,11 @@ MinerLauncher::~MinerLauncher() {
     impl->dispatcher->shutdown();
 }
 
+std::shared_ptr<TaskDispatcher> const& MinerLauncher::dispatcher() const noexcept { return impl->dispatcher; }
+
 void MinerLauncher::onPlayerDestroyBlock(
     ll::event::PlayerDestroyBlockEvent& ev,
-    std::shared_ptr<MinerDispatcher>    dispatcher
+    std::shared_ptr<TaskDispatcher>     dispatcher
 ) {
     auto& rawPos = ev.pos();
     auto& player = ev.self();
@@ -104,7 +103,7 @@ void MinerLauncher::onPlayerDestroyBlock(
     auto hashedPos = miner_util::hashDimensionPosition(rawPos, dimId);
     if (ev.isCancelled() || dispatcher->isProcessing(hashedPos)) {
         FM_TRACE("event cancelled or processing");
-        return; // 已处理 / 正在处理
+        return;
     }
     if (!dispatcher->canLaunchTask(player)) {
         FM_TRACE("The player has unfinished tasks.");
@@ -116,24 +115,24 @@ void MinerLauncher::onPlayerDestroyBlock(
     auto& blockType   = block.getTypeName();
     if (!isMinerEnabled(player, blockType)) {
         FM_TRACE("isMinerEnabled return false");
-        return; // 玩家未启用该方块类型 / 未开启连锁
+        return;
     }
     if (!canDestroyBlockWithMcApi(player, block)) {
         FM_TRACE("player can not destroy block with mc api");
-        return; // 玩家无法破坏该方块
+        return;
     }
 
     auto rtConfig = this->loadRuntimeSingleBlockConfig(blockType);
     if (!rtConfig) [[unlikely]] {
         FM_TRACE("block type not found in rtConfig");
-        return; // 配置文件中没有该方块类型
+        return;
     }
     if (!canDestroyBlockWithConfig(player, rtConfig)) {
         FM_TRACE("player can not destroy block with config");
-        return; // 玩家无法破坏该方块
+        return;
     }
 
-    MinerTaskContext ctx{
+    ChainTaskContext ctx{
         .player      = player,
         .blockId     = block.getBlockItemId(),
         .tiggerPos   = rawPos,
@@ -162,17 +161,17 @@ RuntimeSingleBlockConfigPtr MinerLauncher::loadRuntimeSingleBlockConfig(std::str
     return StaticGlobalConfigHost::getRuntimeSingleBlockConfig(blockType);
 }
 
-void MinerLauncher::prepareAndLaunchTask(MinerTaskContext ctx, MinerDispatcher& dispatcher) {
+void MinerLauncher::prepareAndLaunchTask(ChainTaskContext ctx, TaskDispatcher& dispatcher) {
     auto& block = ctx.blockSource.getBlock(ctx.tiggerPos);
     if (!block.isAir()) {
         FM_TRACE("block is not air");
-        return; // 方块不是空气代表着玩家没有破坏它
+        return;
     }
 
     int limit = calculateLimit(ctx);
     if (limit <= 1) {
         FM_TRACE("limit <= 1");
-        return; // 限制为1或以下则不进行连锁
+        return;
     }
     ctx.limit = limit;
 
@@ -181,21 +180,17 @@ void MinerLauncher::prepareAndLaunchTask(MinerTaskContext ctx, MinerDispatcher& 
 
     // 两阶段：客户端预搜索交接（默认无；ServerMinerLauncher 不覆写则行为不变）
     auto preSearch = tryTakeClientPresearch(ctx);
-    auto hook      = getNotifyFinishedHook(ctx);
 
-    auto task = std::make_shared<MinerTask>(std::move(ctx), dispatcher, hook, std::move(preSearch));
-    dispatcher.launch(task);
+    launchChainTask(std::move(ctx), dispatcher, std::move(preSearch));
 }
 
-MinerTask::NotifyFinishedHook MinerLauncher::getNotifyFinishedHook(MinerTaskContext const& ctx) { return nullptr; }
-
-std::optional<MinerTask::PreSearchData> MinerLauncher::tryTakeClientPresearch(MinerTaskContext const& /* ctx */) {
+std::optional<PreSearchData> MinerLauncher::tryTakeClientPresearch(ChainTaskContext const& /* ctx */) {
     return std::nullopt;
 }
 
-int MinerLauncher::calculateLimit(MinerTaskContext const& ctx) { return calculateDurabilityLimit(ctx); }
+int MinerLauncher::calculateLimit(ChainTaskContext const& ctx) { return calculateDurabilityLimit(ctx); }
 
-int MinerLauncher::calculateDurabilityLimit(MinerTaskContext const& ctx) const {
+int MinerLauncher::calculateDurabilityLimit(ChainTaskContext const& ctx) const {
     constexpr int UNLIMITED  = std::numeric_limits<int>::max();
     constexpr int SAFETY_CAP = 1024;
 
@@ -204,8 +199,8 @@ int MinerLauncher::calculateDurabilityLimit(MinerTaskContext const& ctx) const {
     int   toolLimit = UNLIMITED;
     auto& itemStack = ctx.player.getSelectedItem();
 
-    // 物品会损耗，且没有不可破坏属性时 => 计算耐久
-    if (itemStack.isDamageableItem() && !miner_util::hasUnbreakable(itemStack)) {
+    // 物品会损耗时 => 计算耐久
+    if (itemStack.isDamageableItem()) {
         if (auto item = itemStack.getItem()) {
             // 保留 1 点耐久不爆
             int remaining = item->getMaxDamage() - itemStack.getDamageValue() - 1;

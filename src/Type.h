@@ -3,7 +3,7 @@
 
 namespace fm {
 
-using BlockID = short;
+using BlockID = unsigned short;
 
 namespace tag {
 

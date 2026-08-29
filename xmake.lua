@@ -66,8 +66,9 @@ target("FastMiner") -- Change this to your mod name.
         add_defines("DEBUG")
     end
 
-    if is_mode("release") then 
-        set_optimize("fastest")
+    if is_mode("release") then
+        set_policy("build.optimization.lto", true) -- LTO
+        set_optimize("fastest") -- O3 (LLVM)
     end 
 
     if is_config("target_type", "server") then

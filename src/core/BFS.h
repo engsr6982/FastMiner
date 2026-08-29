@@ -38,7 +38,6 @@ public:
     using Pos = PosT;
     using Key = KeyT;
 
-    /// 队列元素：坐标 + 去重键
     struct Pending {
         Pos blockPos;
         Key hashedPos;
@@ -46,16 +45,22 @@ public:
 
     explicit BFS(HasherF hasher) : hasher_(std::move(hasher)) {}
 
-    /// 默认构造：构造后必须经 reset/seed/adopt 才能使用；
-    /// 若 HasherF 承载维度等参数，请用显式构造并在 reset 前重建一次。
+    /**
+     * @brief 默认构造。
+     *
+     * 构造后必须经 reset/seed/adopt 才能使用；若 HasherF 承载维度等参数，
+     * 请用显式构造并在 reset 前重建一次。
+     */
     BFS()                          = default;
     BFS(BFS&&) noexcept            = default;
     BFS& operator=(BFS&&) noexcept = default;
     BFS(BFS const&)                = delete;
     BFS& operator=(BFS const&)     = delete;
 
-    /// 启动一轮搜索：起点入队并标记已访问（起点不计入结果），丢弃上一轮全部状态。
-    /// limit 同时作为容量提示（>0 时按 2×limit 预分配 visited），结果达到上限即 done。
+    /**
+     * @brief 丢弃上轮状态并启动新搜索。
+     * @note 起点入队但跳过结果视图。
+     */
     void reset(Pos const& start, Key const& startKey, int limit = 0) {
         clearState(limit);
         queue_.emplace_back(Pending{start, startKey});
@@ -63,7 +68,10 @@ public:
         resultBegin_ = 1; // 起点占位 [0]，result 视图跳过它
     }
 
-    /// 预填已确定集合（普通种子：允许重复输入，会做去重与哈希）。已知结果集请用 adopt（零哈希）。
+    /**
+     * @brief 从任意集合播种，内部去重并哈希。
+     * @note 已知唯一结果集请改用 adopt。
+     */
     void seed(std::span<Pos const> initial, int limit = 0) {
         clearState(limit);
         queue_.reserve(initial.size() + 1);
@@ -77,22 +85,27 @@ public:
         resultBegin_ = 0; // 无起点
     }
 
-    /// 无损接管已确定集合（结果集交接：不在 BFS 内重新哈希 / 去重 -- 源头已唯一）。
-    /// 传入集合应不含起点；交接后以 nextPop 纯消费，不再扩展。
+    /**
+     * @brief 直接接管已哈希去重的集合，后续仅消费不再扩展。
+     */
     void adopt(std::vector<Pending>&& settled) {
         clearState();
         queue_       = std::move(settled);
         resultBegin_ = 0; // 无起点
     }
 
-    /// 容量预留提示（无界搜索场景按已知规模预先扩容，减少 rehash/重分配）
+    /**
+     * @brief 按已知规模预先扩容，减少 rehash/重分配。
+     */
     void reserve(size_t queueHint, size_t visitedHint) {
         queue_.reserve(queueHint);
         visited_.reserve(visitedHint);
     }
 
-    /// 推进一个元素：出队 -> onPop 消费 -> 方向扩展（匹配入队并收集）。
-    /// 返回 false 表示队列已耗尽或已达 limit，无需再推进。
+    /**
+     * @brief 消费一个元素并向匹配且未访问的邻居扩展。
+     * @return false 表示队列耗尽或已达上限。
+     */
     template <typename World, typename OnPopF, typename MatchF, typename NeighborF>
         requires std::invocable<OnPopF&, World&, Pending const&> && std::invocable<MatchF&, World&, Pos const&>
               && requires(NeighborF& f, Pos const& p) { f(p, [](Pos const&) {}); }
@@ -123,7 +136,9 @@ public:
         return !done_;
     }
 
-    /// 仅消费一个已入队元素（不扩展）-- adopt/seed 后的纯挖掘阶段
+    /**
+     * @brief 仅消费一个已入队元素，不扩展（adopt/seed 后的纯消费阶段）。
+     */
     template <typename World, typename OnPopF>
         requires std::invocable<OnPopF&, World&, Pending const&>
     bool nextPop(World& world, OnPopF& onPop) {
@@ -140,7 +155,10 @@ public:
         return !done_;
     }
 
-    /// 预算级批量推进（等价于连续调用 next，逐个检查完成）；返回 false 表示完成。
+    /**
+     * @brief 按 budget 连续调用 next。
+     * @return false 表示完成。
+     */
     template <typename World, typename OnPopF, typename MatchF, typename NeighborF>
         requires std::invocable<OnPopF&, World&, Pending const&> && std::invocable<MatchF&, World&, Pos const&>
               && requires(NeighborF& f, Pos const& p) { f(p, [](Pos const&) {}); }
@@ -152,7 +170,9 @@ public:
         return true;
     }
 
-    /// 预算级纯消费（等价于连续调用 nextPop）
+    /**
+     * @brief 按 budget 连续调用 nextPop。
+     */
     template <typename World, typename OnPopF>
         requires std::invocable<OnPopF&, World&, Pending const&>
     bool consume(World& world, int budget, OnPopF& onPop) {
@@ -163,15 +183,21 @@ public:
         return true;
     }
 
-    /// 已搜到的方块集合（不含起点，顺序即 BFS 扩展顺序）--队列的起点偏移视图，
+    /**
+     * @brief 不含起点的结果视图（顺序即 BFS 扩展顺序）。
+     */
     [[nodiscard]] std::span<Pending const> result() const noexcept {
         return std::span<Pending const>(queue_).subspan(resultBegin_);
     }
 
-    /// 全量队列（含起点与预填集合）：挖掘阶段遍历已消费/待消费元素用
+    /**
+     * @brief 全量队列（含起点），用于遍历已消费/待消费元素。
+     */
     [[nodiscard]] std::vector<Pending> const& queue() const noexcept { return queue_; }
 
-    /// 移交全部待通知方块（任务收尾后队列不再使用）
+    /**
+     * @brief 任务收尾后一次性移出全部待通知方块。
+     */
     [[nodiscard]] std::vector<Pending>&& releaseQueue() noexcept { return std::move(queue_); }
 
     [[nodiscard]] bool done() const noexcept { return done_; }
@@ -181,7 +207,7 @@ private:
     void clearState(int limit = 0) {
         queue_.clear();
         visited_.clear();
-        // 恢复容量以复用上一轮分配（避免连续搜索场景反复 realloc）
+        // 复用上一轮容量，避免连续搜索场景反复 realloc
         queue_.reserve(limit > 0 ? static_cast<size_t>(limit) : queue_.capacity());
         visited_.reserve(limit > 0 ? static_cast<size_t>(limit) * 2 : visited_.capacity());
         head_        = 0;
@@ -191,11 +217,11 @@ private:
     }
 
     HasherF                  hasher_;
-    std::vector<Pending>     queue_;          // 搜索队列（head 游标顺序消费，末尾一次性释放）；起点之后即结果集
-    absl::flat_hash_set<Key> visited_;        // 已访问 / 已扫描标记
-    size_t                   head_{0};        // 消费游标
-    size_t                   resultBegin_{0}; // 结果视图起点（reset 后 =1 跳过起点；seed/adopt 后 =0）
-    int                      limit_{0};       // 结果上限（>0 时 queue.size()-resultBegin_ 达到即 done）
+    std::vector<Pending>     queue_;
+    absl::flat_hash_set<Key> visited_;
+    size_t                   head_{0};
+    size_t                   resultBegin_{0}; // reset 后 =1 跳过起点；seed/adopt 后 =0
+    int                      limit_{0};
     bool                     done_{false};
 };
 

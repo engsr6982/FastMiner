@@ -3,12 +3,20 @@
 #include "FastMiner.h"
 #include "config/ClientConfigImpl.h"
 #include "config/StaticGlobalConfigHost.h"
+#include "core/ChainTask.h"
 #include "preview/ChainPreview.h"
 
 #include <memory>
 
-namespace fm {
-namespace client {
+namespace fm::client {
+
+struct ClientMinerLauncher::Impl {
+};
+
+ClientMinerLauncher::ClientMinerLauncher() : impl(std::make_unique<Impl>()) {
+}
+
+ClientMinerLauncher::~ClientMinerLauncher() = default; // 先析构 useLauncher（移除监听），再析构基类（关停调度器）
 
 
 bool ClientMinerLauncher::isMinerEnabled(Player& /* player */, const std::string& /* blockType */) {
@@ -20,7 +28,7 @@ bool ClientMinerLauncher::
     return true;
 }
 
-std::optional<MinerTask::PreSearchData> ClientMinerLauncher::tryTakeClientPresearch(MinerTaskContext const& ctx) {
+std::optional<PreSearchData> ClientMinerLauncher::tryTakeClientPresearch(ChainTaskContext const& ctx) {
     // 仅当挖下的方块 == 预搜索锚点时交接；否则 nullopt，走服务端默认直接搜索提交
     auto* preview = ChainPreview::active();
     if (!preview) return std::nullopt;
@@ -35,5 +43,13 @@ RuntimeSingleBlockConfigPtr ClientMinerLauncher::loadRuntimeSingleBlockConfig(co
     return overrideCfg;
 }
 
-} // namespace client
-} // namespace fm
+void ClientMinerLauncher::launchChainTask(
+    ChainTaskContext             ctx,
+    TaskDispatcher&              dispatcher,
+    std::optional<PreSearchData> preSearch
+) {
+    // 客户端无经济结算：接入默认空完成策略
+    dispatcher.launch(std::make_shared<ChainTask<>>(std::move(ctx), dispatcher, std::move(preSearch)));
+}
+
+} // namespace fm::client

@@ -4,9 +4,10 @@
 namespace fm {
 
 /**
- * 平台服务类
- * 仅管理各平台非全局专有的资源、如事件、外部依赖等
- * @note 不含全局资源：Config、MinerLauncher
+ * @brief 平台服务抽象接口。
+ *
+ * 仅管理各平台非全局专有的资源，如事件、外部依赖等。
+ * @note 不含全局资源：Config、MinerLauncher 由独立单例/静态宿主管理。
  */
 class IPlatformService {
 public:

@@ -1,21 +1,33 @@
 #pragma once
 #include "core/MinerLauncher.h"
 
+#include <memory>
 #include <optional>
 
-namespace fm {
-namespace client {
+namespace fm::client {
+
 
 class ClientMinerLauncher final : public MinerLauncher {
+    struct Impl;
+    std::unique_ptr<Impl> impl;
+
 public:
+    explicit ClientMinerLauncher();
+    ~ClientMinerLauncher() override;
+
     bool isMinerEnabled(Player& player, const std::string& blockType) override;
     bool canDestroyBlockWithConfig(Player& player, const RuntimeSingleBlockConfigPtr& rtConfig) override;
 
     RuntimeSingleBlockConfigPtr loadRuntimeSingleBlockConfig(const std::string& blockType) override;
 
-    /// 两阶段交接：挖下的方块 == 预搜索锚点时，把客户端预搜集合交给连锁任务（免重搜）
-    std::optional<MinerTask::PreSearchData> tryTakeClientPresearch(MinerTaskContext const& ctx) override;
+    /**
+     * @brief 仅在挖下方块与预搜索锚点一致时交接集合，避免过期集合误交付。
+     */
+    std::optional<PreSearchData> tryTakeClientPresearch(ChainTaskContext const& ctx) override;
+
+protected:
+    void
+    launchChainTask(ChainTaskContext ctx, TaskDispatcher& dispatcher, std::optional<PreSearchData> preSearch) override;
 };
 
-} // namespace client
-} // namespace fm
+} // namespace fm::client

@@ -1,7 +1,7 @@
 #pragma once
 #include "Global.h"
-#include "MinerTask.h"
-#include "core/MinerTaskContext.h"
+#include "core/ChainTaskContext.h"
+#include "core/TaskBase.h"
 
 #include "ll/api/event/player/PlayerDestroyBlockEvent.h"
 
@@ -13,20 +13,22 @@ class Player;
 
 namespace fm {
 
-class MinerDispatcher;
+class TaskDispatcher;
 
 class MinerLauncher {
     struct Impl;
     std::unique_ptr<Impl> impl;
 
-    void onPlayerDestroyBlock(ll::event::PlayerDestroyBlockEvent& ev, std::shared_ptr<MinerDispatcher> dispatcher);
+    void onPlayerDestroyBlock(ll::event::PlayerDestroyBlockEvent& ev, std::shared_ptr<TaskDispatcher> dispatcher);
     bool canDestroyBlockWithMcApi(Player& player, Block const& block) const;
-    void prepareAndLaunchTask(MinerTaskContext ctx, MinerDispatcher& dispatcher);
+    void prepareAndLaunchTask(ChainTaskContext ctx, TaskDispatcher& dispatcher);
 
 public:
     FM_DISABLE_COPY_MOVE(MinerLauncher);
     explicit MinerLauncher();
     virtual ~MinerLauncher();
+
+    [[nodiscard]] std::shared_ptr<TaskDispatcher> const& dispatcher() const noexcept;
 
     virtual bool isMinerEnabled(Player& player, std::string const& blockType) = 0;
 
@@ -34,18 +36,23 @@ public:
 
     virtual RuntimeSingleBlockConfigPtr loadRuntimeSingleBlockConfig(std::string const& blockType);
 
-    virtual MinerTask::NotifyFinishedHook getNotifyFinishedHook(MinerTaskContext const& ctx);
-
-    virtual int calculateLimit(MinerTaskContext const& ctx);
+    virtual int calculateLimit(ChainTaskContext const& ctx);
 
     /**
-     * @brief 两阶段交接：挖掘前从客户端预搜索中取已确定的连锁集合。
-     * 默认返回 nullopt（服务端无预搜索，挖掘后直接搜索提交，行为不变）；
-     * 客户端覆写为当 ctx.tiggerPos 与预搜索锚点一致时返回集合。
+     * @brief 挖掘前尝试接管客户端预搜索已确定的方块集合。
+     * @return 默认返回 nullopt，服务端直接现场搜索；客户端在锚点匹配时返回预搜索集合。
      */
-    virtual std::optional<MinerTask::PreSearchData> tryTakeClientPresearch(MinerTaskContext const& ctx);
+    virtual std::optional<PreSearchData> tryTakeClientPresearch(ChainTaskContext const& ctx);
 
-    int calculateDurabilityLimit(MinerTaskContext const& ctx) const;
+protected:
+    /**
+     * @brief 平台子类创建并启动连锁挖掘任务。
+     * @note 服务器实例化为 ChainTask<ServerChainFinisher>，客户端实例化为 ChainTask<>，避免编译期互相依赖。
+     */
+    virtual void
+    launchChainTask(ChainTaskContext ctx, TaskDispatcher& dispatcher, std::optional<PreSearchData> preSearch) = 0;
+
+    int calculateDurabilityLimit(ChainTaskContext const& ctx) const;
 };
 
 

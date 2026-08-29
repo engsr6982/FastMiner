@@ -5,6 +5,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 namespace fm::client {
 
@@ -19,15 +20,14 @@ using BlockOverrides = std::unordered_map<std::string, BlockOverride>;
 
 using BlockDefault = BlockOverride;
 
-// 连锁范围透视描边配置
 struct OutlineConfig {
-    bool enabled{true};      // 描边总开关
-    int  maxBlocks{1024};    // 描边数量上限（防止超长集合拖渲染帧）
-    int  searchPerTick{256}; // 预搜索每 tick 配额（调度预算，不卡线程）
+    bool enabled{true};
+    int  maxBlocks{1024};    // 防止超长集合拖渲染帧
+    int  searchPerTick{256}; // 预搜索每 tick 预算
 };
 
 struct ClientConfigModel {
-    static int constexpr SchemaVersion = 4;
+    static int constexpr SchemaVersion = 5;
 
     int version = SchemaVersion;
 
@@ -35,12 +35,13 @@ struct ClientConfigModel {
 
     bool telemetry{true};
 
-    int bindKey{86}; // Windows VK Codes
+    int bindKey{86}; // Windows 虚拟键码
 
     OutlineConfig outline;
 
     BlockDefault   blockDefault;
-    BlockOverrides overrides; // override default block settings
+    BlockOverrides overrides;
+
 };
 
 } // namespace fm::client

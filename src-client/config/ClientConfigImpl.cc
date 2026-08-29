@@ -263,7 +263,7 @@ void ClientConfigImpl::removeBlockConfig(std::string const& blockType) {
     if (iter == model.overrides.end()) {
         return;
     }
-    model.overrides.erase(iter); // 擦除旧元素
+    model.overrides.erase(iter);
     (void)StaticGlobalConfigHost::save();
     runtimeConfigMap.erase(getBlockIdCached(blockType));
 }
