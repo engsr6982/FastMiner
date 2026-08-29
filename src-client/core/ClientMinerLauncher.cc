@@ -1,19 +1,24 @@
 #include "ClientMinerLauncher.h"
 
+#include "ClientPlatformService.h"
 #include "FastMiner.h"
 #include "config/ClientConfigImpl.h"
 #include "config/StaticGlobalConfigHost.h"
 #include "core/ChainTask.h"
 #include "preview/ChainPreview.h"
+#include "use/UseLauncher.h"
 
 #include <memory>
 
 namespace fm::client {
 
 struct ClientMinerLauncher::Impl {
+    std::unique_ptr<UseLauncher> useLauncher;
 };
 
 ClientMinerLauncher::ClientMinerLauncher() : impl(std::make_unique<Impl>()) {
+    // 基类已构造共享调度器（监听挖掘 + tick 循环），UseTask 与其共用-个配额池
+    impl->useLauncher = std::make_unique<UseLauncher>(dispatcher());
 }
 
 ClientMinerLauncher::~ClientMinerLauncher() = default; // 先析构 useLauncher（移除监听），再析构基类（关停调度器）

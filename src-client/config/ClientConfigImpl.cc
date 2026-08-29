@@ -6,6 +6,7 @@
 #include <filesystem>
 
 #include "mc/deps/core/string/HashedString.h"
+#include "mc/world/item/VanillaItemNames.h"
 #include <mc/world/level/block/VanillaBlockTypeIds.h>
 #include <tuple>
 
@@ -181,6 +182,43 @@ void ClientConfigImpl::buildDefault() {
             }
         }}
         // clang-format on
+    };
+
+    // 批量右键默认白名单：木->下界合金 斧/锹/锄 + 作物种子/茎（甘蔗/竹子）
+    // 物品类型-律取 VanillaItemNames 常量，避免硬编码物品 ID
+    namespace VIN  = VanillaItemNames;
+    model.useItems = {
+        // 斧
+        VIN::WoodenAxe(),
+        VIN::StoneAxe(),
+        VIN::IronAxe(),
+        VIN::GoldenAxe(),
+        VIN::DiamondAxe(),
+        VIN::NetheriteAxe(),
+        // 锹
+        VIN::WoodenShovel(),
+        VIN::StoneShovel(),
+        VIN::IronShovel(),
+        VIN::GoldenShovel(),
+        VIN::DiamondShovel(),
+        VIN::NetheriteShovel(),
+        // 锄
+        VIN::WoodenHoe(),
+        VIN::StoneHoe(),
+        VIN::IronHoe(),
+        VIN::GoldenHoe(),
+        VIN::DiamondHoe(),
+        VIN::NetheriteHoe(),
+        // 作物 / 种子
+        VIN::SugarCane(),     // 甘蔗
+        VIN::WheatSeeds(),    // 小麦种子
+        VIN::PumpkinSeeds(),  // 南瓜种子
+        VIN::MelonSeeds(),    // 西瓜种子
+        VIN::BeetrootSeeds(), // 甜菜根种子
+        VIN::Carrot(),        // 胡萝卜
+        VIN::Potato(),        // 土豆
+
+        VIN::BoneMeal(), // 骨粉
     };
 }
 

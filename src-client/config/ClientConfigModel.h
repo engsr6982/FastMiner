@@ -42,6 +42,8 @@ struct ClientConfigModel {
     BlockDefault   blockDefault;
     BlockOverrides overrides;
 
+    // UseTask 仅对白名单内物品生效；BFS 匹配触发方块类型后逐个走原版 useItemOn。
+    std::vector<std::string> useItems{};
 };
 
 } // namespace fm::client

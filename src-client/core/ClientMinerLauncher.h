@@ -6,6 +6,7 @@
 
 namespace fm::client {
 
+class UseLauncher;
 
 class ClientMinerLauncher final : public MinerLauncher {
     struct Impl;
