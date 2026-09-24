@@ -49,8 +49,8 @@ namespace fm::mc_utils {
 inline bool isBlock(ItemStackBase const& itemst) {
     auto item = itemst.mItem.lock();
     if (!item) return false;
-    auto weak = item->mBlockType.get();
-    return weak.get() != nullptr;
+    auto bl = item->mBlockType;
+    return bl != nullptr;
 }
 
 // IDA: v1.21.0

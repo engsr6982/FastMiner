@@ -59,7 +59,8 @@ bool resolveVanillaTopLeftAnchor(ScreenView const& screenView, RectangleArea& ou
 
     bool found = false;
     for (auto const name : kCandidates) {
-        auto const area = screenView.getAreaOfControlByName(std::string{name});
+        // ScreenView::getAreaOfControlByName 自 v26.51 起不再由 SDK 声明，见 helper 中的复原
+        auto const area = helper::getAreaOfControlByName(screenView, std::string{name});
         if (helper::isEmpty(area)) continue;
         if (!found || helper::maxY(area) > helper::maxY(out)) out = area; // 取最靠下的，即文本块底部
         found = true;

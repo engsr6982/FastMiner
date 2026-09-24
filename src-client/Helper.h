@@ -1,13 +1,18 @@
 #pragma once
 
 #include "mc/client/gui/FontHandle.h"
+#include "mc/client/gui/controls/UIControl.h"
+#include "mc/client/gui/controls/VisualTree.h"
 #include "mc/client/gui/screens/ScreenContext.h"
+#include "mc/client/gui/screens/ScreenView.h"
 #include "mc/client/renderer/BaseActorRenderContext.h"
 #include "mc/deps/input/RectangleArea.h"
 #include "mc/deps/renderer/Camera.h"
 #include "mc/deps/renderer/MatrixStack.h"
 
+#include <algorithm>
 #include <limits>
+#include <string>
 
 
 // v26.40 起 LeviLamina 导出的 SDK 不再声明下列接口（原函数被内联或收起），
@@ -33,6 +38,35 @@ namespace fm::client::helper {
 
 /// RectangleArea::minX —— 同上，minX() 即 _x0。
 [[nodiscard]] inline float minX(RectangleArea const& area) { return area._x0; }
+
+
+/// ScreenView::getAreaOfControlByName
+/// v26.51 起 SDK 不再在 ScreenView 上声明该方法（实现仍在二进制里：
+/// UIScene::getAreaOfControlByName 只是一句转发，真正的实现挂在 ScreenView 上）。
+/// IDA 复原：
+///   VisualTree::getControlByName(&ctrl, screenView.mVisualTree, name, false);
+///   if (ctrl) 返回由 UIControl::getAABB() 得到的矩形
+/// 而 UIControl::getAABB() **带副作用**：脏标记置位时会先调用 _setCachedPosition()
+/// 惰性重算缓存坐标，直接读 mCachedPosition 会拿到过期值（横幅位置会错）。
+/// 矩形由 mCachedPosition 与 mSize 规范化而来（尺寸为负时对调两端）：
+///   x0=min(px, px+w)  x1=max(px, px+w)  y0=min(py, py+h)  y1=max(py, py+h)
+/// 故此处按同一顺序复原，且必须显式先做重算这一步。
+[[nodiscard]] inline RectangleArea getAreaOfControlByName(ScreenView const& view, std::string const& name) {
+    if (!view.mVisualTree) return RectangleArea{};
+    auto const control = view.mVisualTree->getControlByName(name, false);
+    if (!control) return RectangleArea{};
+
+    control->_setCachedPosition(); // 对应 UIControl::getAABB() 的惰性重算副作用
+
+    auto const& pos  = control->mCachedPosition.get();
+    auto const& size = control->mSize.get();
+    return RectangleArea{
+        ._x0 = std::min(pos.x, pos.x + size.x),
+        ._x1 = std::max(pos.x, pos.x + size.x),
+        ._y0 = std::min(pos.y, pos.y + size.y),
+        ._y1 = std::max(pos.y, pos.y + size.y)
+    };
+}
 
 
 /// FontHandle::isValid

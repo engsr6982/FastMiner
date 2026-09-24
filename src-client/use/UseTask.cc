@@ -8,6 +8,7 @@
 #include "mc/world/actor/player/Player.h"
 #include "mc/world/gamemode/GameMode.h"
 #include "mc/world/gamemode/InteractionResult.h"
+#include "mc/world/item/HandSlot.h"
 #include "mc/world/item/Item.h"
 #include "mc/world/item/ItemStack.h"
 #include "mc/world/level/BlockSource.h"
@@ -95,8 +96,17 @@ void UseTask::consumeElement(BlockSource& bs, Element const& element) {
         // 与玩家原始右键同-条权威路径（完整交互/事件/判定/耐久/同步）；
         // 目标方块是否适配该物品（翻耕/去皮/种植）由 Minecraft 自行判定
         auto& gameMode = *this->player_.mGameMode;
-        (void)
-            gameMode.useItemOn(this->tool_, pos, static_cast<unsigned char>(face_), hitPos(pos, face_), &block, false);
+        // v26.51 起 useItemOn 在 hit 与 targetBlock 之间新增 HandSlot 形参；
+        // tool_ 即 getSelectedItem() 取到的主手物品，故传 Mainhand。
+        (void)gameMode.useItemOn(
+            this->tool_,
+            pos,
+            static_cast<unsigned char>(face_),
+            hitPos(pos, face_),
+            HandSlot::Mainhand,
+            &block,
+            false
+        );
     });
 }
 
