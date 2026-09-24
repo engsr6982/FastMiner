@@ -23,6 +23,8 @@
 #include <mc/server/commands/PlayerCommandOrigin.h>
 #include <mc/world/Minecraft.h>
 #include <mc/world/actor/player/Player.h>
+#include <mc/world/level/block/Block.h>
+#include <mc/world/level/block/registry/BlockTypeRegistry.h>
 
 
 #include <algorithm>
@@ -33,6 +35,17 @@
 namespace fm::mc_utils {
 
 
+[[nodiscard]] inline Block const& getDefaultBlockState(HashedString const& type) {
+    auto& blockTypeRegistry = BlockTypeRegistry::mBlockTypeRegistry();
+    return blockTypeRegistry.mValue.getDefaultBlockState(type);
+}
+
+// ItemStackBase::isBlock —— v26.40 起该接口在 SDK 中不再导出，此处复原其实现。
+// IDA: v1.21.133 (edu) 0x106887190 验证，原实现为：
+//   mItem.counter && mItem.counter->ptr            // lock()
+//     && (&item->mBlockType)->counter != nullptr
+//     && (&item->mBlockType)->counter->ptr != nullptr
+// 即「物品存在且其 mBlockType 弱引用未失效」，无其它副作用。
 inline bool isBlock(ItemStackBase const& itemst) {
     auto item = itemst.mItem.lock();
     if (!item) return false;

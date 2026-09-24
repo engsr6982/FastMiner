@@ -1,6 +1,7 @@
 #pragma once
 #include "core/ChainTaskContext.h"
 #include "core/TaskBase.h"
+#include "utils/McUtils.h"
 
 #include "ll/api/event/EventBus.h"
 #include "ll/api/event/player/PlayerDestroyBlockEvent.h"
@@ -120,7 +121,7 @@ public:
 
         ++this->count_;
         block.playerDestroy(this->player_, pos);
-        static auto& air = BlockTypeRegistry::get().getDefaultBlockState("minecraft:air");
+        static auto& air = mc_utils::getDefaultBlockState("minecraft:air");
         this->blockSource_.setBlock(pos, air, 2, nullptr, blockChangeCtx_);
 
         pendingUpdate_.push_back(pos);

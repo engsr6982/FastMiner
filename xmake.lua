@@ -1,14 +1,14 @@
 add_rules("mode.debug", "mode.release")
 
-add_repositories("liteldev-repo https://github.com/LiteLDev/xmake-repo.git")
+add_repositories("levimc-repo https://github.com/LiteLDev/xmake-repo.git")
 add_repositories("iceblcokmc https://github.com/IceBlcokMC/xmake-repo.git")
 
 
-add_requires("levilamina 26.20.7", {configs = {target_type = get_config("target_type")}})
-add_requires("ll-bstats 0.5.0", {configs = {target_type = get_config("target_type")}})
+add_requires("levilamina 26.40.4", {configs = {target_type = get_config("target_type")}})
+add_requires("ll-bstats 0.6.0", {configs = {target_type = get_config("target_type")}})
 
 if is_config("target_type", "server") then
-    add_requires("economy_bridge 2026.8.29")
+    add_requires("economy_bridge 0.6.0")
 end
 
 add_requires("levibuildscript")

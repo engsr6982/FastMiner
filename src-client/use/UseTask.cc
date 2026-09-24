@@ -94,8 +94,9 @@ void UseTask::consumeElement(BlockSource& bs, Element const& element) {
     this->withProcessingLock(hashed, [this, &block, &pos] {
         // 与玩家原始右键同-条权威路径（完整交互/事件/判定/耐久/同步）；
         // 目标方块是否适配该物品（翻耕/去皮/种植）由 Minecraft 自行判定
-        (void)this->player_.getGameMode()
-            .useItemOn(this->tool_, pos, static_cast<unsigned char>(face_), hitPos(pos, face_), &block, false);
+        auto& gameMode = *this->player_.mGameMode;
+        (void)
+            gameMode.useItemOn(this->tool_, pos, static_cast<unsigned char>(face_), hitPos(pos, face_), &block, false);
     });
 }
 
@@ -121,7 +122,7 @@ int UseTask::computeLimit(Player& player) {
     auto& item  = player.getSelectedItem();
     // 物品会损耗时才 clamp（防爆工具）
     if (item.isDamageableItem()) {
-        if (auto it = item.getItem()) {
+        if (auto it = item.mItem.get()) {
             int remaining = it->getMaxDamage() - item.getDamageValue() - 1; // 保留 1 点耐久不爆
             limit         = std::min(limit, std::max(0, remaining));
         }

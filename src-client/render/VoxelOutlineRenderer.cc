@@ -8,28 +8,47 @@
 #include "mc/client/game/IClientInstance.h"
 #include "mc/client/gui/screens/ScreenContext.h"
 #include "mc/client/renderer/BaseActorRenderContext.h"
+#include "mc/client/renderer/RenderMaterialGroup.h"
 #include "mc/client/renderer/Tessellator.h"
+#include "mc/client/renderer/TextureGroup.h"
 #include "mc/client/renderer/game/LevelRenderer.h"
 #include "mc/client/renderer/game/LevelRendererPlayer.h"
+#include "mc/deps/core/file/PathView.h"
+#include "mc/deps/core/math/Vec2.h"
 #include "mc/deps/core/math/Vec3.h"
+#include "mc/deps/core/renderer/RenderMaterialInfo.h"
+#include "mc/deps/core/resource/ResourceLocation.h"
+#include "mc/deps/core_graphics/TextureSetLayerType.h"
+#include "mc/deps/minecraft_renderer/renderer/BedrockTextureData.h"
+#include "mc/deps/minecraft_renderer/renderer/IsMissingTexture.h"
 #include "mc/deps/core_graphics/enums/DepthWriteMask.h"
 #include "mc/deps/core_graphics/enums/PrimitiveMode.h"
 #include "mc/deps/minecraft_renderer/renderer/MaterialPtr.h"
 #include "mc/deps/minecraft_renderer/renderer/Mesh.h"
 #include "mc/deps/minecraft_renderer/renderer/RenderMaterial.h"
+#include "mc/deps/minecraft_renderer/renderer/TexturePtr.h"
+#include "mc/deps/minecraft_renderer/resources/ClientTexture.h"
+#include "mc/deps/minecraft_renderer/resources/OffscreenCaptureDescription.h"
+#include "mc/deps/minecraft_renderer/resources/ServerTexture.h"
+
+#include "Helper.h"
 
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <variant>
 #include <vector>
 
 namespace fm::client {
 namespace {
 
-// 颜色（均不透明，不依赖 blend）
-constexpr int   kWhiteAbgr   = 0xFFFFFFFF;
-constexpr int   kHiddenAbgr  = 0xFF969696; // 灰 (150,150,150)：被遮挡 / 背侧
-constexpr float kShellOffset = 0.01f;      // 白线沿外侧法线的表面外偏移（格），使深度测试通过
+// 颜色（均不透明，不依赖 blend）。经 Tessellator 顶点色随 mesh 一起烘焙。
+constexpr uint  kWhiteRgb    = 0xFFFFFFu;
+constexpr uint  kHiddenRgb   = 0x969696u; // 灰 (150,150,150)：被遮挡 / 背侧
+constexpr float kShellOffset = 0.01f;     // 白线沿外侧法线的表面外偏移（格），使深度测试通过
+// 白线 pass 的深度偏移：消除与所在方块表面的 z-fighting（详见 ScopedDepthWriteOff）
+constexpr float kWhitePassDepthBias = 100.0f;
+constexpr float kWhitePassSlopeBias = 15.0f;
 
 /**
  * @brief 真透视深度状态 RAII。
@@ -64,16 +83,28 @@ struct ScopedDepthXRay {
 struct ScopedDepthWriteOff {
     mce::RenderMaterial* material{nullptr};
     mce::DepthWriteMask  saved{static_cast<mce::DepthWriteMask>(1)};
+    float                savedDepthBias{0.0f};
+    float                savedSlopeBias{0.0f};
 
     explicit ScopedDepthWriteOff(mce::RenderMaterial* mat) : material(mat) {
         if (!material) return;
-        auto& desc          = material->depthStencilStateDescription.get();
-        saved               = desc.depthWriteMask;
-        desc.depthWriteMask = static_cast<mce::DepthWriteMask>(0);
+        auto& desc                      = material->depthStencilStateDescription.get();
+        saved                           = desc.depthWriteMask;
+        savedDepthBias                  = material->mDepthBias;
+        savedSlopeBias                  = material->mSlopeScaledDepthBias;
+        desc.depthWriteMask             = static_cast<mce::DepthWriteMask>(0);
+        // 白线与所在方块的表面严格共面，只靠 0.01 的几何外推在稍远处即会 z-fighting：
+        // 白线时而过不了深度测试，露出底下灰线 -> 视觉上频繁闪烁。
+        // 原版描边材质自带合适的深度偏移所以不闪，glow_sign_text 没有，故此处显式钉住
+        // （偏移量参考 LHolo v26.40 适配版对共面 overlay 的取值）。
+        material->mDepthBias            = kWhitePassDepthBias;
+        material->mSlopeScaledDepthBias = kWhitePassSlopeBias;
     }
     ~ScopedDepthWriteOff() {
         if (!material) return;
         material->depthStencilStateDescription.get().depthWriteMask = saved;
+        material->mDepthBias                                        = savedDepthBias;
+        material->mSlopeScaledDepthBias                             = savedSlopeBias;
     }
 };
 
@@ -89,9 +120,80 @@ inline uint64_t packEdgeKey(int x, int y, int z, int axis) {
     return packCell(x, y, z) | (static_cast<uint64_t>(axis) << 62);
 }
 
+using TextureVariant = std::variant<std::monostate, mce::TexturePtr, mce::ClientTexture, mce::ServerTexture>;
+
+/**
+ * @brief 取原版 2x2 纯白贴图，作为 mesh 的纹理绑定。
+ *
+ * 原版描边材质会采样绑定纹理并做 alpha test：若绑定空 variant，采样即缺失纹理
+ * （洋红）—— 这正是轮廓整体发紫红的原因。该白贴图被采样在中心处恰为 (1,1,1,1)，
+ * 纹理乘法保持中性且 alpha test 永不丢弃，因此不会干扰顶点色
+ * （采样点见 buildOutlineMesh 的 tex2）。
+ * 贴图组要等资源加载后才可用，故解析成功即缓存，未就绪时逐帧重试。
+ */
+TextureVariant resolveWhiteTextureVariant(LevelRenderer* levelRenderer) {
+    static mce::TexturePtr cached{};
+    static bool            resolved = false;
+    if (!resolved && levelRenderer) {
+        auto const& textureGroup = levelRenderer->mTextureGroup.get();
+        if (textureGroup) {
+            auto      texture       = textureGroup->getTexture(
+                ResourceLocation{Core::PathView{"textures/ui/white_background"}},
+                false,
+                std::nullopt,
+                cg::TextureSetLayerType::Color
+            );
+            auto const& clientTexture = texture.mClientTexture;
+            if (clientTexture && clientTexture->mIsMissingTexture != IsMissingTexture::Yes) {
+                cached   = std::move(texture);
+                resolved = true;
+            }
+        }
+    }
+    return resolved ? TextureVariant{cached} : TextureVariant{};
+}
+
+/**
+ * @brief 解析 glow_sign_text 材质（着色器直接输出顶点色 COLOR0）。
+ *
+ * vanilla 的 mOutlineSelectionMaterial 颜色由 uniform 驱动、会忽略顶点色
+ * （IDA: LevelRendererPlayer::_renderOutlineSelection 用 ShaderColor::setColor 着色，
+ * tessellateWireBox 不写顶点色），因此用它无法画出白/灰两色。
+ * glow_sign_text 直接输出 COLOR0，正是把烘焙进 mesh 的顶点色原样画出来所需。
+ * 解析失败返回 nullptr，调用方回退到原版描边材质。
+ *
+ * 客户端库不导出 mce::MaterialPtr 的构造函数，故句柄放在零初始化的对齐存储里，
+ * 只赋值其内部 shared_ptr，避免调用构造函数。
+ */
+mce::MaterialPtr const* resolveGlowSignMaterial() {
+    alignas(mce::MaterialPtr) static std::byte storage[sizeof(mce::MaterialPtr)]{};
+    static auto* const                        cached   = reinterpret_cast<mce::MaterialPtr*>(storage);
+    static bool                               resolved = false;
+    if (!resolved) {
+        resolved   = true;
+        bool found = false;
+        auto scan  = [&](mce::RenderMaterialGroup& group) {
+            if (found) return;
+            for (auto const& entry : group.mMaterials.get()) {
+                auto const& info = entry.second;
+                if (!info || !info->mPtr) continue;
+                if (entry.first.getString() != "glow_sign_text") continue;
+                cached->mRenderMaterialInfoPtr = info;
+                found                          = true;
+                break;
+            }
+        };
+        scan(mce::RenderMaterialGroup::common());
+        if (!found) {
+            scan(mce::RenderMaterialGroup::switchable());
+        }
+    }
+    return cached->mRenderMaterialInfoPtr ? cached : nullptr;
+}
+
 } // namespace
 
-VoxelOutlineRenderer::VoxelOutlineRenderer() = default;
+VoxelOutlineRenderer::VoxelOutlineRenderer()  = default;
 VoxelOutlineRenderer::~VoxelOutlineRenderer() = default;
 
 void VoxelOutlineRenderer::update(VoxelSet const& view) {
@@ -292,17 +394,36 @@ void VoxelOutlineRenderer::buildOutlineMesh(BaseActorRenderContext& ctx) {
     meshValid_  = false;
     if (edges_.empty()) return;
 
-    auto& tessellator = ctx.getTessellator();
+    auto& tessellator = helper::getTessellator(ctx);
     for (int pass = 0; pass < 2; ++pass) {
         bool const white = pass == 0;
-        tessellator.cancel();
+
+        // tessellator.cancel() 自 v26.40 起不再导出。
+        // IDA: cancel() 的全部实现就是单个 bool 置 0（即 mTessellating = false），无其它副作用。
+        tessellator.mTessellating = false;
+
         tessellator.begin(
             Tessellator::DebugContextCallback{},
             mce::PrimitiveMode::LineList,
             static_cast<int>(edges_.size() * 2),
             false
         );
-        tessellator.colorABGR(white ? kWhiteAbgr : kHiddenAbgr);
+        // tessellator.colorABGR(...) 自 v26.40 起不再导出，但等价的 color(mce::Color) 仍然导出。
+        // 必须走官方 color()：它内部会以正确的 VertexField 枚举值调用 MeshData::enableField，
+        // 而 MeshData::enableField 本身在 26.40 已不再导出（仅剩 mFieldEnabled 成员），
+        // 且 mFieldEnabled 由 array<bool,14> 变为 array<bool,15> —— 枚举已变，
+        // 手写裸下标 1 无法保证指向 Color，会导致颜色字段未启用（表现为颜色异常）。
+        // IDA: color(mce::Color) 与 colorABGR 写入同一编码 (a<<24)|(b<<16)|(g<<8)|r。
+        tessellator.color(white ? mce::Color(kWhiteRgb) : mce::Color(kHiddenRgb));
+
+        // 每个顶点都要给 UV：材质会按 UV 采样绑定纹理并做 alpha test，
+        // 缺 UV 时采样无效 -> 输出缺失纹理色（洋红）。统一采纯白贴图中心，
+        // 使纹理乘法中性、alpha test 永不丢弃，顶点色得以原样呈现。
+        auto const emitVertex = [&](float x, float y, float z) {
+            tessellator.tex2(Vec2{0.5f, 0.5f});
+            tessellator.vertex(x, y, z);
+        };
+
         int verts = 0;
         for (auto const& e : edges_) {
             if (white) {
@@ -312,18 +433,31 @@ void VoxelOutlineRenderer::buildOutlineMesh(BaseActorRenderContext& ctx) {
                 float const ox = e.nx * kShellOffset;
                 float const oy = e.ny * kShellOffset;
                 float const oz = e.nz * kShellOffset;
-                tessellator.vertex(e.ax + ox, e.ay + oy, e.az + oz);
-                tessellator.vertex(e.bx + ox, e.by + oy, e.bz + oz);
+                emitVertex(e.ax + ox, e.ay + oy, e.az + oz);
+                emitVertex(e.bx + ox, e.by + oy, e.bz + oz);
             } else {
-                tessellator.vertex(e.ax, e.ay, e.az);
-                tessellator.vertex(e.bx, e.by, e.bz);
+                emitVertex(e.ax, e.ay, e.az);
+                emitVertex(e.bx, e.by, e.bz);
             }
             verts += 2;
         }
+
+        // SupplementaryFieldAutoGenerationMode 加载器未导出声明，根据旧版本推测 None 依旧为 0
+        // TODO: 等待加载器补全声明 https://github.com/LiteLDev/mcapi-requests/issues/249
+        // v26.20
+        // enum class Tessellator::SupplementaryFieldAutoGenerationMode : int {
+        //     None               = 0,
+        //     NormalsAndTangents = 1,
+        // };
+        //
+        // v26.40
+        // enum class SupplementaryFieldAutoGenerationMode : ushort {};
+        //
         auto mesh = std::make_unique<mce::Mesh>(tessellator.end(
             Tessellator::UploadMode::Buffered,
             white ? "FastMinerVoxelOutlineWhite" : "FastMinerVoxelOutlineGray",
-            Tessellator::SupplementaryFieldAutoGenerationMode::None
+            // Tessellator::SupplementaryFieldAutoGenerationMode::None
+            static_cast<SupplementaryFieldAutoGenerationMode>(0)
         ));
         if (white) {
             meshWhite_  = std::move(mesh);
@@ -347,34 +481,67 @@ void VoxelOutlineRenderer::draw(BaseActorRenderContext& ctx) {
     }
     if (!meshValid_) return;
 
-    auto& client        = ctx.getClient();
+    auto& client        = ctx.mClientInstance;
     auto* levelRenderer = client.getLevelRenderer();
     if (!levelRenderer) return;
-    auto const& material = levelRenderer->getLevelRendererPlayer().mOutlineSelectionMaterial.get();
-    if (!material) return;
+
+    auto& levelRendererPlayer = levelRenderer->mLevelRendererPlayer;
+    if (!levelRendererPlayer) return;
+
+    // 优先用 glow_sign_text（着色器直接输出顶点色），回退到原版描边材质。
+    // 原版描边材质颜色由 uniform 驱动、忽略顶点色，用它画不出白/灰两色；
+    // 且两者都必须绑定纹理（见 resolveWhiteTextureVariant），否则采样缺失纹理发洋红。
+    auto const* glowMaterial = resolveGlowSignMaterial();
+    auto const& material     = glowMaterial ? *glowMaterial
+                                            : levelRendererPlayer->mOutlineSelectionMaterial.get();
+    if (!material.mRenderMaterialInfoPtr) return;
+
+    // 白色贴图尚未解析出来时直接跳过本帧：空 variant 会让材质采样到缺失纹理，
+    // 表现为首帧闪一下洋红再变正常。宁可少画一帧，也不要闪错色。
+    auto const texture = resolveWhiteTextureVariant(levelRenderer);
+    if (std::holds_alternative<std::monostate>(texture)) return;
+
+    // BaseActorRenderContext::getCameraPosition 自 v26.40 起不再由 SDK 导出。
+    // IDA: 原实现只是构造期缓存 LevelRendererCamera::getCameraPos() 的返回值，
+    // 而 getCameraPos() 就是 `return &mCameraPos`。LevelRendererPlayer 继承链为
+    // LevelRendererPlayer -> LevelRendererCameraListeners -> LevelRendererCamera，
+    // 故直接取同一成员：与 getWorldMatrix() 的矩阵来源(mScreenContext.camera)
+    // 指向同一相机，避免新旧两次取值不同步。
+    Vec3 const& camera = levelRendererPlayer->mCameraPos.get();
 
     // 注意：world matrix 在透明 pass 指世界->视图->投影变换；网格顶点为锚点本地坐标，
     // 世界矩阵平移(anchor - camera) 映射到相机相对空间（缺失此步渲染到视野外）。
-    Vec3 const& camera = ctx.getCameraPosition();
-    auto        matrix = ctx.getWorldMatrix().push(false);
-    matrix->translate(
+    // MatrixStackRef::operator-> 自 v26.40 起被移除，改为直接经公开的 mat 成员取矩阵。
+    auto matrix = helper::getWorldMatrix(ctx).push(false);
+    matrix.mat->translate(
         static_cast<float>(edgeAnchor_.x) - camera.x,
         static_cast<float>(edgeAnchor_.y) - camera.y,
         static_cast<float>(edgeAnchor_.z) - camera.z
     );
 
-    auto* mat = const_cast<mce::RenderMaterial*>(material.operator->());
+    // mce::MaterialPtr::operator-> 自 v26.40 起不再由 SDK 导出。
+    // IDA: 其实现为「返回所持有 RenderMaterialInfo 内那个 unique_ptr 的裸指针」
+    //       (if (info) return *(void**)((char*)info + offsetof(RenderMaterialInfo, mPtr));)，
+    // 即等价于 info->mPtr.get()。RenderMaterialInfo 在 26.40 中仍完整导出
+    // (mc/deps/core/renderer/RenderMaterialInfo.h)，故按成员名取值，不依赖偏移。
+    auto* mat = material.mRenderMaterialInfoPtr->mPtr.get();
+
+    // mOffscreenCaptureDescription 自 v26.40 起移入不透明的 BaseActorRenderContext::Impl，
+    // SDK 不再暴露。该成员仅在离屏捕获(全景图/缩略图)时被置为非 monostate，正常世界渲染
+    // 恒为 monostate，故此处传默认构造值（= 不做离屏捕获）。
+    OffscreenCaptureDescription const noCapture{};
 
     // pass 1：灰色 - 真透视（深测/深写关闭）全量外壳，被地形遮挡处显示灰色
     {
         ScopedDepthXRay const xray{mat};
         if (meshGray_ && grayVerts_ > 0) {
             meshGray_->renderMesh(
-                ctx.getScreenContext(),
+                ctx.mScreenContext,
                 material,
+                texture,
                 0,
                 static_cast<uint>(grayVerts_),
-                ctx.mOffscreenCaptureDescription.get(),
+                noCapture,
                 nullptr
             );
         }
@@ -385,11 +552,12 @@ void VoxelOutlineRenderer::draw(BaseActorRenderContext& ctx) {
         ScopedDepthWriteOff const writeOff{mat};
         if (meshWhite_ && whiteVerts_ > 0) {
             meshWhite_->renderMesh(
-                ctx.getScreenContext(),
+                ctx.mScreenContext,
                 material,
+                texture,
                 0,
                 static_cast<uint>(whiteVerts_),
-                ctx.mOffscreenCaptureDescription.get(),
+                noCapture,
                 nullptr
             );
         }

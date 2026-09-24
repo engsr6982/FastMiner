@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-09-23
+
+- 适配 LeviLamina v26.40.x
+
 ## [0.18.0] - 2026-08-29
 
 - ✨ (客户端侧) 新增默认配置, 不再需要挨个配置白名单 #9

@@ -201,7 +201,7 @@ int MinerLauncher::calculateDurabilityLimit(ChainTaskContext const& ctx) const {
 
     // 物品会损耗时 => 计算耐久
     if (itemStack.isDamageableItem()) {
-        if (auto item = itemStack.getItem()) {
+        if (auto item = itemStack.mItem.lock()) {
             // 保留 1 点耐久不爆
             int remaining = item->getMaxDamage() - itemStack.getDamageValue() - 1;
             toolLimit     = std::max(0, remaining);

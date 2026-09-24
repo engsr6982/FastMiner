@@ -34,12 +34,12 @@ ll::Expected<> ServerConfigImpl::save(const std::filesystem::path& baseDir) {
 
 void ServerConfigImpl::buildDefault() {
     std::unordered_set<std::string> MinecraftAxeTools = {
-        VanillaItemNames::WoodenAxe(),
-        VanillaItemNames::StoneAxe(),
-        VanillaItemNames::IronAxe(),
-        VanillaItemNames::DiamondAxe(),
-        VanillaItemNames::GoldenAxe(),
-        VanillaItemNames::NetheriteAxe()
+        "minecraft:wooden_axe",
+        "minecraft:stone_axe",
+        "minecraft:iron_axe",
+        "minecraft:diamond_axe",
+        "minecraft:golden_axe",
+        "minecraft:netherite_axe"
     };
 
     model.blocks.clear();

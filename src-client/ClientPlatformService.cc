@@ -27,6 +27,8 @@
 #include "mc/deps/core/math/Color.h"
 #include "mc/deps/input/RectangleArea.h"
 
+#include "Helper.h"
+
 #include <array>
 #include <atomic>
 #include <string>
@@ -58,8 +60,8 @@ bool resolveVanillaTopLeftAnchor(ScreenView const& screenView, RectangleArea& ou
     bool found = false;
     for (auto const name : kCandidates) {
         auto const area = screenView.getAreaOfControlByName(std::string{name});
-        if (area.isEmpty()) continue;
-        if (!found || area.maxY() > out.maxY()) out = area; // 取最靠下的，即文本块底部
+        if (helper::isEmpty(area)) continue;
+        if (!found || helper::maxY(area) > helper::maxY(out)) out = area; // 取最靠下的，即文本块底部
         found = true;
     }
     return found;
@@ -78,7 +80,7 @@ void drawToggleBanner(ll::event::AfterUIRenderEvent const& event) {
     if (screenView.getScreenName() != "hud_screen") return;
 
     auto const& fontHandle = ctx.mClient.getFontHandle(); // 绑定临时对象，避免拷贝 FontHandle
-    if (!fontHandle.isValid()) return;
+    if (!helper::isValid(fontHandle)) return;
     auto& font = fontHandle.getFont();
 
     std::string const text = "连锁已启用";
@@ -96,8 +98,8 @@ void drawToggleBanner(ll::event::AfterUIRenderEvent const& event) {
     float         x0 = 0.0f;
     float         y0 = 0.0f;
     if (resolveVanillaTopLeftAnchor(screenView, anchor)) {
-        x0 = anchor.minX();
-        y0 = anchor.maxY() + 2.0f; // 紧随原版文本块之下
+        x0 = helper::minX(anchor);
+        y0 = helper::maxY(anchor) + 2.0f; // 紧随原版文本块之下
     } else {
         // 纸娃娃/坐标/游玩天数全隐藏时左上角已无原版信息，退化为固定留白，
         // 保证连锁状态始终可见
@@ -105,8 +107,18 @@ void drawToggleBanner(ll::event::AfterUIRenderEvent const& event) {
         y0 = 4.0f;
     }
 
-    RectangleArea const bgRect{x0, y0, x0 + bannerW, y0 + bannerH, true};
-    RectangleArea const textRect{x0 + padX, y0 + padY, x0 + bannerW - padX, y0 + bannerH - padY, true};
+    // v26.40 起 RectangleArea 删除了「(x0, y0, x1, y1, checkForValidity)」构造函数
+    // —— 该函数会把形参重排成成员顺序（IDA: _x0=x0, _x1=x1, _y0=y0, _y1=y1）——
+    // 类因此退化为聚合体，而成员声明顺序是 _x0, _x1, _y0, _y1。
+    // 若仍按 (x0, y0, x1, y1) 书写，_x1 与 _y0 会被互换，矩形整体错位。
+    // 故此处用指定初始化器，顺序不再有歧义。
+    RectangleArea const bgRect{._x0 = x0, ._x1 = x0 + bannerW, ._y0 = y0, ._y1 = y0 + bannerH};
+    RectangleArea const textRect{
+        ._x0 = x0 + padX,
+        ._x1 = x0 + bannerW - padX,
+        ._y0 = y0 + padY,
+        ._y1 = y0 + bannerH - padY
+    };
 
     // 黑底。178 ≈ alpha 0.7（同 vanilla 位置/天数控件的 textures/ui/Black），
     ctx.fillRectangle(bgRect, mce::Color(0, 0, 0, 178), 0.7f);

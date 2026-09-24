@@ -66,7 +66,7 @@ void ClientGUI::_sendEditSimilarBlock(Player& player, std::string const& typeNam
     f.appendButton("返回", "textures/ui/icon_import", "path", [typeName](Player& pl) { sendTo(pl); });
     f.appendButton("添加手持方块", "textures/ui/color_plus", "path", [typeName](Player& pl) {
         auto const& item = pl.getSelectedItem();
-        if (item.isNull() || !item.isBlock()) {
+        if (item.isNull() || !mc_utils::isBlock(item)) {
             mc_utils::sendText<mc_utils::LogLevel::Error>(pl, "请手持一个方块!");
             return;
         }
@@ -91,7 +91,7 @@ void ClientGUI::_handleAddItemBlock(Player& player) {
         mc_utils::sendText<mc_utils::LogLevel::Error>(player, "请手持一个方块!");
     }
 
-    if (!item.isBlock()) {
+    if (!mc_utils::isBlock(item)) {
         mc_utils::sendText<mc_utils::LogLevel::Error>(player, "当前手持物品没有对应方块实例!");
         return;
     }
