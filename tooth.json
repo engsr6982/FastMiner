@@ -29,7 +29,7 @@
                         {
                             "type": "dir",
                             "src": "FastMiner/",
-                            "dest": "plugins/FastMiner"
+                            "dest": "mods/FastMiner"
                         }
                     ]
                 }

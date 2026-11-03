@@ -8,12 +8,15 @@
 #include "ll/api/utils/RandomUtils.h"
 
 #include "mc/world/actor/player/Player.h"
+#include "mc/world/gamemode/GameMode.h"
 #include "mc/world/item/enchanting/EnchantUtils.h"
 #include "mc/world/level/BlockSource.h"
+#include "mc/world/level/NeighborChangeHistory.h"
 #include "mc/world/level/block/ActorChangeContext.h"
 #include "mc/world/level/block/Block.h"
 #include "mc/world/level/block/BlockChangeContext.h"
 #include "mc/world/level/block/registry/BlockTypeRegistry.h"
+
 
 #include <algorithm>
 #include <concepts>
@@ -21,6 +24,8 @@
 #include <optional>
 #include <random>
 #include <vector>
+
+inline NeighborChangeHistory::NeighborChangeHistory() = default;
 
 namespace fm {
 
@@ -42,7 +47,7 @@ template <typename FinishPolicy = NullFinishPolicy>
     requires std::default_initializable<FinishPolicy>
 class ChainTask final : public TaskBase<ChainTask<FinishPolicy>> {
 public:
-    static constexpr bool needsWorldFlush = true;
+    static constexpr bool needsWorldFlush = false;
 
     using Base    = TaskBase<ChainTask<FinishPolicy>>;
     using Element = typename Base::Element;
@@ -60,10 +65,6 @@ public:
       preSearchBlocks_(preSearch ? std::move(*preSearch) : PreSearchData{}) {
         blockChangeCtx_.mContextSource = ActorChangeContext{&this->player_};
         this->seeded_                  = !preSearchBlocks_.empty();
-
-        // 按单 tick 最大可能方块数预分配，避免批边界反复 realloc
-        auto const& cfg = StaticGlobalConfigHost::getDispatcherConfig();
-        pendingUpdate_.reserve(std::min(this->limit_, cfg.globalBlockLimitPerTick));
     }
 
     FM_DISABLE_COPY_MOVE(ChainTask);
@@ -120,23 +121,12 @@ public:
         }
 
         ++this->count_;
-        block.playerDestroy(this->player_, pos);
-        static auto& air = mc_utils::getDefaultBlockState("minecraft:air");
-        this->blockSource_.setBlock(pos, air, 2, nullptr, blockChangeCtx_);
-
-        pendingUpdate_.push_back(pos);
-    }
-
-    /**
-     * @brief 批边界补上 setBlock(flags=2) 阶段跳过的邻居更新。
-     * @note 保证液体/红石/附着方块正确响应。
-     */
-    inline void flushWorldUpdate() {
-        for (auto const& pos : pendingUpdate_) {
-            this->blockSource_.updateNeighborsAt(pos);
+        if (auto mode = this->player_.mGameMode.get()) {
+            mode->destroyBlock(pos, 0);
         }
-        pendingUpdate_.clear();
     }
+
+    void flushWorldUpdate() {}
 
     inline void onTaskCompleted(long long cpuTime) {
         Base::scheduleFinish([this, cpuTime] {
@@ -185,7 +175,6 @@ private:
     int const                   durability_;
     int                         deductDamage_{0};
     PreSearchData               preSearchBlocks_{}; // 两阶段交接：客户端预搜索确定的目标集合
-    std::vector<BlockPos>       pendingUpdate_{};   // 本批次已挖掘但尚未 updateNeighborsAt 的方块
 };
 
 

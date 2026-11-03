@@ -9,7 +9,7 @@
 
 #include "ll/api/chrono/GameChrono.h"
 #include "ll/api/coro/CoroTask.h"
-#include "ll/api/coro/InterruptableSleep.h"
+#include "ll/api/coro/ConditionVariable.h"
 #include "ll/api/event/EventBus.h"
 #include "ll/api/event/ListenerBase.h"
 #include "ll/api/event/player/PlayerDestroyBlockEvent.h"
@@ -38,7 +38,7 @@ struct MinerLauncher::Impl {
 
     struct Loop {
         std::atomic<bool>            stopper{false};
-        ll::coro::InterruptableSleep sleep;
+        ll::coro::ConditionVariable sleep;
     };
     std::shared_ptr<Loop> loop{std::make_shared<Loop>()};
 };
@@ -65,7 +65,7 @@ MinerLauncher::MinerLauncher() : impl(std::make_unique<Impl>()) {
 
     ll::coro::keepThis([dispatcher, loop]() -> ll::coro::CoroTask<> {
         while (!loop->stopper) {
-            co_await loop->sleep.sleepFor(ll::chrono::ticks{1});
+            co_await loop->sleep.waitFor(ll::chrono::ticks{1});
             if (loop->stopper) {
                 break;
             }
@@ -77,7 +77,7 @@ MinerLauncher::MinerLauncher() : impl(std::make_unique<Impl>()) {
 
 MinerLauncher::~MinerLauncher() {
     impl->loop->stopper = true;
-    impl->loop->sleep.interrupt(true);
+    impl->loop->sleep.notifyAll(true);
     ll::event::EventBus::getInstance().removeListener(impl->playerDestroyBlockListener);
     ll::event::EventBus::getInstance().removeListener(impl->playerDisconnectListener);
     impl->dispatcher->shutdown();

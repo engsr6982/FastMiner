@@ -21,6 +21,7 @@
 #include "mc/client/gui/CaretMeasureData.h"
 #include "mc/client/gui/Font.h"
 #include "mc/client/gui/FontHandle.h"
+#include "mc/client/gui/FontRepository.h"
 #include "mc/client/gui/TextMeasureData.h"
 #include "mc/client/gui/screens/ScreenView.h"
 #include "mc/client/renderer/screen/MinecraftUIRenderContext.h"
@@ -31,6 +32,7 @@
 
 #include <array>
 #include <atomic>
+#include <cassert>
 #include <string>
 #include <string_view>
 
@@ -82,7 +84,18 @@ void drawToggleBanner(ll::event::AfterUIRenderEvent const& event) {
 
     auto const& fontHandle = ctx.mClient.getFontHandle(); // 绑定临时对象，避免拷贝 FontHandle
     if (!helper::isValid(fontHandle)) return;
-    auto& font = fontHandle.getFont();
+    auto font = [&] -> Font* {
+        // v26.60 版本起 FontHandle::getFont 被优化，以下代码基于 v26.32 复原
+        auto repo = fontHandle.mFontRepository->get();
+        if (!repo) {
+            return nullptr;
+        }
+        if (fontHandle.mFontId == FontRepository::INVALID_FONT() || fontHandle.mFontId >= repo->mLoadedFonts->size()) {
+            return fontHandle.mDefaultFont.get();
+        }
+        return repo->mLoadedFonts->at(fontHandle.mFontId).get().get();
+    }();
+    if (!font) return;
 
     std::string const text = "连锁已启用";
 
@@ -91,7 +104,7 @@ void drawToggleBanner(ll::event::AfterUIRenderEvent const& event) {
     float const padX       = 6.0f;
     float const padY       = 3.0f;
 
-    float const textWidth = static_cast<float>(ctx.getLineLength(font, text, fontSize, false));
+    float const textWidth = static_cast<float>(ctx.getLineLength(*font, text, fontSize, false));
     float const bannerW   = textWidth + padX * 2.0f;
     float const bannerH   = lineHeight + padY * 2.0f;
 
@@ -114,12 +127,8 @@ void drawToggleBanner(ll::event::AfterUIRenderEvent const& event) {
     // 若仍按 (x0, y0, x1, y1) 书写，_x1 与 _y0 会被互换，矩形整体错位。
     // 故此处用指定初始化器，顺序不再有歧义。
     RectangleArea const bgRect{._x0 = x0, ._x1 = x0 + bannerW, ._y0 = y0, ._y1 = y0 + bannerH};
-    RectangleArea const textRect{
-        ._x0 = x0 + padX,
-        ._x1 = x0 + bannerW - padX,
-        ._y0 = y0 + padY,
-        ._y1 = y0 + bannerH - padY
-    };
+    RectangleArea const
+        textRect{._x0 = x0 + padX, ._x1 = x0 + bannerW - padX, ._y0 = y0 + padY, ._y1 = y0 + bannerH - padY};
 
     // 黑底。178 ≈ alpha 0.7（同 vanilla 位置/天数控件的 textures/ui/Black），
     ctx.fillRectangle(bgRect, mce::Color(0, 0, 0, 178), 0.7f);
@@ -127,7 +136,7 @@ void drawToggleBanner(ll::event::AfterUIRenderEvent const& event) {
     // 原版聊天黄文本（renderShadow=true 带阴影），水平居中
     auto const yellow{mce::Color(0xFFFF55u)};
     ctx.drawText(
-        font,
+        *font,
         textRect,
         std::string{text},
         yellow,

@@ -19,10 +19,10 @@
 #include "mc/deps/core/renderer/RenderMaterialInfo.h"
 #include "mc/deps/core/resource/ResourceLocation.h"
 #include "mc/deps/core_graphics/TextureSetLayerType.h"
-#include "mc/deps/minecraft_renderer/renderer/BedrockTextureData.h"
-#include "mc/deps/minecraft_renderer/renderer/IsMissingTexture.h"
 #include "mc/deps/core_graphics/enums/DepthWriteMask.h"
 #include "mc/deps/core_graphics/enums/PrimitiveMode.h"
+#include "mc/deps/minecraft_renderer/renderer/BedrockTextureData.h"
+#include "mc/deps/minecraft_renderer/renderer/IsMissingTexture.h"
 #include "mc/deps/minecraft_renderer/renderer/MaterialPtr.h"
 #include "mc/deps/minecraft_renderer/renderer/Mesh.h"
 #include "mc/deps/minecraft_renderer/renderer/RenderMaterial.h"
@@ -38,6 +38,8 @@
 #include <memory>
 #include <variant>
 #include <vector>
+
+mce::TexturePtr::TexturePtr() = default;
 
 namespace fm::client {
 namespace {
@@ -88,11 +90,11 @@ struct ScopedDepthWriteOff {
 
     explicit ScopedDepthWriteOff(mce::RenderMaterial* mat) : material(mat) {
         if (!material) return;
-        auto& desc                      = material->depthStencilStateDescription.get();
-        saved                           = desc.depthWriteMask;
-        savedDepthBias                  = material->mDepthBias;
-        savedSlopeBias                  = material->mSlopeScaledDepthBias;
-        desc.depthWriteMask             = static_cast<mce::DepthWriteMask>(0);
+        auto& desc          = material->depthStencilStateDescription.get();
+        saved               = desc.depthWriteMask;
+        savedDepthBias      = material->mDepthBias;
+        savedSlopeBias      = material->mSlopeScaledDepthBias;
+        desc.depthWriteMask = static_cast<mce::DepthWriteMask>(0);
         // 白线与所在方块的表面严格共面，只靠 0.01 的几何外推在稍远处即会 z-fighting：
         // 白线时而过不了深度测试，露出底下灰线 -> 视觉上频繁闪烁。
         // 原版描边材质自带合适的深度偏移所以不闪，glow_sign_text 没有，故此处显式钉住
@@ -137,7 +139,7 @@ TextureVariant resolveWhiteTextureVariant(LevelRenderer* levelRenderer) {
     if (!resolved && levelRenderer) {
         auto const& textureGroup = levelRenderer->mTextureGroup.get();
         if (textureGroup) {
-            auto      texture       = textureGroup->getTexture(
+            auto texture = textureGroup->getTexture(
                 ResourceLocation{Core::PathView{"textures/ui/white_background"}},
                 false,
                 std::nullopt,
@@ -167,8 +169,8 @@ TextureVariant resolveWhiteTextureVariant(LevelRenderer* levelRenderer) {
  */
 mce::MaterialPtr const* resolveGlowSignMaterial() {
     alignas(mce::MaterialPtr) static std::byte storage[sizeof(mce::MaterialPtr)]{};
-    static auto* const                        cached   = reinterpret_cast<mce::MaterialPtr*>(storage);
-    static bool                               resolved = false;
+    static auto* const                         cached   = reinterpret_cast<mce::MaterialPtr*>(storage);
+    static bool                                resolved = false;
     if (!resolved) {
         resolved   = true;
         bool found = false;
@@ -414,7 +416,10 @@ void VoxelOutlineRenderer::buildOutlineMesh(BaseActorRenderContext& ctx) {
         // 且 mFieldEnabled 由 array<bool,14> 变为 array<bool,15> —— 枚举已变，
         // 手写裸下标 1 无法保证指向 Color，会导致颜色字段未启用（表现为颜色异常）。
         // IDA: color(mce::Color) 与 colorABGR 写入同一编码 (a<<24)|(b<<16)|(g<<8)|r。
-        tessellator.color(white ? mce::Color(kWhiteRgb) : mce::Color(kHiddenRgb));
+        { // v26.60 版本起 Tessellator::color 被优化
+            auto rgba = white ? mce::Color(kWhiteRgb) : mce::Color(kHiddenRgb);
+            tessellator.color(rgba.r, rgba.g, rgba.b, rgba.a);
+        }
 
         // 每个顶点都要给 UV：材质会按 UV 采样绑定纹理并做 alpha test，
         // 缺 UV 时采样无效 -> 输出缺失纹理色（洋红）。统一采纯白贴图中心，
@@ -492,8 +497,7 @@ void VoxelOutlineRenderer::draw(BaseActorRenderContext& ctx) {
     // 原版描边材质颜色由 uniform 驱动、忽略顶点色，用它画不出白/灰两色；
     // 且两者都必须绑定纹理（见 resolveWhiteTextureVariant），否则采样缺失纹理发洋红。
     auto const* glowMaterial = resolveGlowSignMaterial();
-    auto const& material     = glowMaterial ? *glowMaterial
-                                            : levelRendererPlayer->mOutlineSelectionMaterial.get();
+    auto const& material     = glowMaterial ? *glowMaterial : levelRendererPlayer->mOutlineSelectionMaterial.get();
     if (!material.mRenderMaterialInfoPtr) return;
 
     // 白色贴图尚未解析出来时直接跳过本帧：空 variant 会让材质采样到缺失纹理，
