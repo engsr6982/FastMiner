@@ -16,10 +16,11 @@ namespace fm {
  */
 struct TaskControl {
     enum class State {
-        Pending,
-        Running,
-        Finished,
-        Interrupted,
+        Pending,     // 等待执行
+        Running,     // 执行中
+        Finished,    // 执行完毕
+        Interrupted, // 被外部中断
+        Aborted,     // 外部熔断
     };
 
     Player& player_;
@@ -30,7 +31,9 @@ struct TaskControl {
     explicit TaskControl(Player& player) : player_(player) {}
 
     inline void interrupt() { state_ = State::Interrupted; }
+    inline void abort() { state_ = State::Aborted; }
     inline bool isInterrupted() const { return state_ == State::Interrupted; }
+    inline bool isAborted() const { return state_ == State::Aborted; }
     inline bool isFinished() const { return state_ == State::Finished; }
     inline bool isRunning() const { return state_ == State::Running; }
     inline bool isPending() const { return state_ == State::Pending; }

@@ -85,6 +85,7 @@ bool FastMiner::disable() {
 bool FastMiner::unload() { return true; }
 
 FastMiner::PlatformServiceImpl& FastMiner::getPlatformService() const { return *mImpl->mPlatformService; }
+MinerLauncher*                  FastMiner::getMinerLauncher() const { return mImpl->mLauncher.get(); }
 
 } // namespace fm
 

@@ -1,18 +1,21 @@
 #include "ClientPlatformService.h"
 
+#include "FastMiner.h"
 #include "Global.h"
 #include "command/FastMinerCommand.h"
 #include "config/ClientConfigImpl.h"
+#include "core/MinerLauncher.h"
 
 #include "config/StaticGlobalConfigHost.h"
 #include "ll/api/event/EventBus.h"
 #include "ll/api/event/ListenerBase.h"
+#include "ll/api/event/client/ClientExitLevelEvent.h"
 #include "ll/api/event/client/ClientJoinLevelEvent.h"
 #include "ll/api/event/input/KeyInputEvent.h"
+#include "ll/api/event/render/UIRenderEvent.h"
 #include "ll/api/event/world/ClientLevelTickEvent.h"
 #include "ll/api/input/KeyRegistry.h"
 
-#include "ll/api/event/render/UIRenderEvent.h"
 
 #include "preview/ChainPreview.h"
 #include "render/ChainOutline.h"
@@ -156,6 +159,7 @@ void drawToggleBanner(ll::event::AfterUIRenderEvent const& event) {
 
 struct ClientPlatformService::Impl {
     ll::event::ListenerPtr        mClientJoinLevelListener{nullptr};
+    ll::event::ListenerPtr        mClientExitLevelEventListener{nullptr};
     ll::event::ListenerPtr        mKeyInputListener{nullptr};
     ll::event::ListenerPtr        mLevelTickListener{nullptr};
     ll::event::ListenerPtr        mUIRenderListener{nullptr};
@@ -168,51 +172,58 @@ ClientPlatformService::ClientPlatformService() : impl(std::make_unique<Impl>()) 
 ClientPlatformService::~ClientPlatformService() = default;
 
 bool ClientPlatformService::init() {
-    impl->mClientJoinLevelListener =
-        ll::event::EventBus::getInstance().emplaceListener<ll::event::ClientJoinLevelEvent>(
-            [](ll::event::ClientJoinLevelEvent&) {
-                // 由于初始化时序问题，客户端侧需要等待玩家进入世界后再初始化运行时数据
-                FM_TRACE("Client joined level, building runtime map...");
-                StaticGlobalConfigHost::getInstance().buildRuntimeMap();
-                FM_TRACE("Client joined level, building runtime map... done");
+    auto& bus = ll::event::EventBus::getInstance();
 
-                FM_TRACE("Client joined level, registering commands...");
-                FastMinerCommand::setup();
-                FM_TRACE("Client joined level, registering commands... done");
-            }
-        );
+    impl->mClientJoinLevelListener =
+        bus.emplaceListener<ll::event::ClientJoinLevelEvent>([](ll::event::ClientJoinLevelEvent&) {
+            // 由于初始化时序问题，客户端侧需要等待玩家进入世界后再初始化运行时数据
+            FM_TRACE("Client joined level, building runtime map...");
+            StaticGlobalConfigHost::getInstance().buildRuntimeMap();
+            FM_TRACE("Client joined level, building runtime map... done");
+
+            FM_TRACE("Client joined level, registering commands...");
+            FastMinerCommand::setup();
+            FM_TRACE("Client joined level, registering commands... done");
+        });
+    impl->mClientExitLevelEventListener =
+        bus.emplaceListener<ll::event::ClientExitLevelEvent>([](ll::event::ClientExitLevelEvent&) {
+            FM_TRACE("Client exited level, shutdown all running tasks...");
+            auto launcher = FastMiner::getInstance().getMinerLauncher();
+            assert(launcher);
+            auto dis = launcher->dispatcher();
+            assert(dis != nullptr);
+            dis->shutdown(); // cleanup all running tasks
+            FM_TRACE("Client exited level, shutdown all running tasks...done");
+        });
+
 
     auto& key_registry = ll::input::KeyRegistry::getInstance();
     key_registry.getOrCreateKey("FastMiner Toggle", {ClientConfigImpl::model.bindKey});
 
-    impl->mKeyInputListener = ll::event::EventBus::getInstance().emplaceListener<ll::event::KeyInputEvent>(
-        [this](ll::event::KeyInputEvent& event) {
-            if (event.keyCode() == ClientConfigImpl::model.bindKey) {
-                bool const down = event.isDown();
-                impl->mKeyActivated.store(down, std::memory_order_relaxed);
-                ChainPreview::setKeyHeld(down);
-            }
+    impl->mKeyInputListener = bus.emplaceListener<ll::event::KeyInputEvent>([this](ll::event::KeyInputEvent& event) {
+        if (event.keyCode() == ClientConfigImpl::model.bindKey) {
+            bool const down = event.isDown();
+            impl->mKeyActivated.store(down, std::memory_order_relaxed);
+            ChainPreview::setKeyHeld(down);
         }
-    );
+    });
 
-    impl->mUIRenderListener = ll::event::EventBus::getInstance().emplaceListener<ll::event::AfterUIRenderEvent>(
-        [this](ll::event::AfterUIRenderEvent& event) {
+    impl->mUIRenderListener =
+        bus.emplaceListener<ll::event::AfterUIRenderEvent>([this](ll::event::AfterUIRenderEvent& event) {
             if (!impl->mKeyActivated.load(std::memory_order_relaxed)) return;
             drawToggleBanner(event);
-        }
-    );
+        });
 
     impl->mPreview = std::make_unique<ChainPreview>();
     ChainPreview::setActive(impl->mPreview.get());
     ChainOutline::install();
 
-    impl->mLevelTickListener = ll::event::EventBus::getInstance().emplaceListener<ll::event::ClientLevelTickEvent>(
-        [this](ll::event::ClientLevelTickEvent&) {
+    impl->mLevelTickListener =
+        bus.emplaceListener<ll::event::ClientLevelTickEvent>([this](ll::event::ClientLevelTickEvent&) {
             if (impl->mPreview) {
                 impl->mPreview->tick(impl->mKeyActivated.load(std::memory_order_relaxed));
             }
-        }
-    );
+        });
 
     return true;
 }
@@ -226,6 +237,7 @@ bool ClientPlatformService::destroy() {
     impl->mPreview.reset();
     ll::event::EventBus::getInstance().removeListener(impl->mUIRenderListener);
     ll::event::EventBus::getInstance().removeListener(impl->mClientJoinLevelListener);
+    ll::event::EventBus::getInstance().removeListener(impl->mClientExitLevelEventListener);
     ll::event::EventBus::getInstance().removeListener(impl->mKeyInputListener);
     return true;
 }

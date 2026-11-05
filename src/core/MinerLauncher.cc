@@ -8,14 +8,15 @@
 
 
 #include "ll/api/chrono/GameChrono.h"
-#include "ll/api/coro/CoroTask.h"
 #include "ll/api/coro/ConditionVariable.h"
+#include "ll/api/coro/CoroTask.h"
 #include "ll/api/event/EventBus.h"
 #include "ll/api/event/ListenerBase.h"
 #include "ll/api/event/player/PlayerDestroyBlockEvent.h"
 #include "ll/api/event/player/PlayerDisconnectEvent.h"
 #include "ll/api/thread/ServerThreadExecutor.h"
 
+#include "mc/platform/UUID.h"
 #include "mc/world/item/Item.h"
 #include "mc/world/item/ItemStackBase.h"
 #include "mc/world/level/BlockSource.h"
@@ -25,9 +26,40 @@
 #include <atomic>
 #include <limits>
 #include <memory>
+#include <unordered_map>
 #include <utility>
 
 namespace fm {
+
+using PauseLaunchTaskPlayerMap = std::unordered_map<mce::UUID, std::atomic_int>; // 玩家 ID -> 暂停计数
+struct PauseLaunchTaskGuard {
+    mce::UUID                 uid;
+    PauseLaunchTaskPlayerMap* set;
+
+    PauseLaunchTaskGuard(Player& player, PauseLaunchTaskPlayerMap& s) : PauseLaunchTaskGuard(player.getUuid(), s) {}
+    PauseLaunchTaskGuard(mce::UUID u, PauseLaunchTaskPlayerMap& s) : uid(u), set(&s) { (*set)[uid].fetch_add(1); }
+    PauseLaunchTaskGuard(PauseLaunchTaskGuard const& other) : uid(other.uid), set(other.set) {
+        if (set) {
+            (*set)[uid].fetch_add(1);
+        }
+    }
+    ~PauseLaunchTaskGuard() {
+        if (auto* s = set) {
+            auto it = s->find(uid);
+            if (it == s->end()) {
+                return;
+            }
+            it->second.fetch_sub(1);
+            if (it->second <= 0) {
+                s->erase(it);
+            }
+        }
+    }
+
+    PauseLaunchTaskGuard& operator=(PauseLaunchTaskGuard const&) = delete;
+    PauseLaunchTaskGuard& operator=(PauseLaunchTaskGuard&&)      = delete;
+    PauseLaunchTaskGuard(PauseLaunchTaskGuard&&)                 = delete;
+};
 
 struct MinerLauncher::Impl {
     // 调度器用共享所有权管理：事件 listener 与调度协程都持强引用，
@@ -36,12 +68,19 @@ struct MinerLauncher::Impl {
     ll::event::ListenerPtr          playerDestroyBlockListener;
     ll::event::ListenerPtr          playerDisconnectListener;
 
+    PauseLaunchTaskPlayerMap pauseLaunchTaskPlayers; // 准备队列中的玩家(防止时序问题导致死锁或覆盖)
+
     struct Loop {
-        std::atomic<bool>            stopper{false};
+        std::atomic<bool>           stopper{false};
         ll::coro::ConditionVariable sleep;
     };
     std::shared_ptr<Loop> loop{std::make_shared<Loop>()};
+
+    inline bool isPauseLaunchTask(Player& player) const {
+        return pauseLaunchTaskPlayers.find(player.getUuid()) != pauseLaunchTaskPlayers.end();
+    }
 };
+
 
 MinerLauncher::MinerLauncher() : impl(std::make_unique<Impl>()) {
     impl->dispatcher = std::make_shared<TaskDispatcher>();
@@ -59,9 +98,11 @@ MinerLauncher::MinerLauncher() : impl(std::make_unique<Impl>()) {
         },
         ll::event::EventPriority::Low
     );
-    impl->playerDisconnectListener = bus.emplaceListener<ll::event::PlayerDisconnectEvent>([dispatcher](auto& ev) {
-        dispatcher->interruptPlayerTask(ev.self());
-    });
+    impl->playerDisconnectListener =
+        bus.emplaceListener<ll::event::PlayerDisconnectEvent>([dispatcher, this](auto& ev) {
+            dispatcher->interruptPlayerTask(ev.self());
+            impl->pauseLaunchTaskPlayers.erase(ev.self().getUuid());
+        });
 
     ll::coro::keepThis([dispatcher, loop]() -> ll::coro::CoroTask<> {
         while (!loop->stopper) {
@@ -94,17 +135,23 @@ void MinerLauncher::onPlayerDestroyBlock(
     auto  dimId  = player.getDimensionId();
 
     // 对于本地主机玩家，忽略本地事件，因为本地事件的 BlockSource 没有权限破坏方块
-    // TODO: 对于本地联机、加入服务器，需要特殊处理，向服务端请求
     if (player.isClientSide()) {
         FM_TRACE("Client side player destroy block event ignored");
         return;
     }
 
     auto hashedPos = miner_util::hashDimensionPosition(rawPos, dimId);
-    if (ev.isCancelled() || dispatcher->isProcessing(hashedPos)) {
+    if (ev.isCancelled() || dispatcher->isProcessing(hashedPos)) { // 事件被取消或此方块正在被连锁处理
         FM_TRACE("event cancelled or processing");
         return;
     }
+    // 竟态时序: 上一个任务正在准备启动，下一个任务接力导致覆盖
+    if (impl->isPauseLaunchTask(player)) {
+        FM_TRACE("player is in pauseLaunchTaskPlayers");
+        return;
+    }
+    PauseLaunchTaskGuard guard{player, impl->pauseLaunchTaskPlayers};
+    // 二次检查能否启动任务
     if (!dispatcher->canLaunchTask(player)) {
         FM_TRACE("The player has unfinished tasks.");
         return;
@@ -141,12 +188,13 @@ void MinerLauncher::onPlayerDestroyBlock(
         .blockSource = blockSource,
         .rtConfig    = std::move(rtConfig)
     };
-    ll::coro::keepThis([this, dispatcher, loop = impl->loop, ctx = std::move(ctx)]() -> ll::coro::CoroTask<> {
+    ll::coro::keepThis([this, dispatcher, loop = impl->loop, ctx = std::move(ctx), guard]() -> ll::coro::CoroTask<> {
         co_await ll::chrono::ticks{1};
         if (loop->stopper) {
             co_return; // 已关停则不再启动延时任务
         }
         this->prepareAndLaunchTask(std::move(ctx), *dispatcher);
+        (void)guard; // 拷贝副本，保证上一个 guard 析构仍有有效的暂停计数
         co_return;
     }).launch(ll::thread::ServerThreadExecutor::getDefault());
 }

@@ -1,4 +1,5 @@
 #pragma once
+#include "Global.h"
 #include "core/ChainTaskContext.h"
 #include "core/TaskBase.h"
 #include "utils/McUtils.h"
@@ -25,7 +26,8 @@
 #include <random>
 #include <vector>
 
-inline NeighborChangeHistory::NeighborChangeHistory() = default;
+inline NeighborChangeHistory::NeighborChangeHistory()                             = default;
+inline NeighborChangeHistory::NeighborChangeHistory(NeighborChangeHistory const&) = default;
 
 namespace fm {
 
@@ -47,10 +49,34 @@ template <typename FinishPolicy = NullFinishPolicy>
     requires std::default_initializable<FinishPolicy>
 class ChainTask final : public TaskBase<ChainTask<FinishPolicy>> {
 public:
-    static constexpr bool needsWorldFlush = false;
+    static constexpr bool needsWorldFlush = true;
 
     using Base    = TaskBase<ChainTask<FinishPolicy>>;
     using Element = typename Base::Element;
+
+    struct ChainNeighborUpdateElement {
+        BlockPos              pos;
+        NeighborChangeHistory history;
+
+        inline Block const*&       getPreviousPermutation() { return history.mUnk75cbb5.as<Block const*>(); }
+        inline Block const* const& getPreviousPermutation() const { return history.mUnk75cbb5.as<Block const*>(); }
+        inline Block const*&       getBlockPermutation() { return history.mUnkda688c.as<Block const*>(); }
+        inline Block const* const& getBlockPermutation() const { return history.mUnkda688c.as<Block const*>(); }
+
+        explicit ChainNeighborUpdateElement(BlockPos const& p, Block const& previous, Block const& current) : pos(p) {
+            getPreviousPermutation() = &previous; // mPreviousPermutation
+            getBlockPermutation()    = &current;  // mBlockPermutation
+        }
+
+        std::string dumpForDebug() const {
+            return fmt::format(
+                "ChainNeighborUpdateElement(pos={}, history.mPreviousPermutation={}, history.mBlockPermutation={})",
+                pos.toString(),
+                getPreviousPermutation() ? getPreviousPermutation()->getTypeName() : "nullptr",
+                getBlockPermutation() ? getBlockPermutation()->getTypeName() : "nullptr"
+            );
+        }
+    };
 
     inline ChainTask(
         ChainTaskContext             ctx,
@@ -65,6 +91,10 @@ public:
       preSearchBlocks_(preSearch ? std::move(*preSearch) : PreSearchData{}) {
         blockChangeCtx_.mContextSource = ActorChangeContext{&this->player_};
         this->seeded_                  = !preSearchBlocks_.empty();
+
+        // 按单 tick 最大可能方块数预分配，避免批边界反复 realloc
+        auto const& cfg = StaticGlobalConfigHost::getDispatcherConfig();
+        pendingUpdate_.reserve(std::min(this->limit_, cfg.globalBlockLimitPerTick));
     }
 
     FM_DISABLE_COPY_MOVE(ChainTask);
@@ -121,12 +151,32 @@ public:
         }
 
         ++this->count_;
-        if (auto mode = this->player_.mGameMode.get()) {
-            mode->destroyBlock(pos, 0);
-        }
+        // Block::playerDestory 生成掉落物，不移除方块，处理饥饿值
+        // BlockSource::removeBlock 移除方块，不生成掉落物
+        // BlockSource::setBlock 移除方块，可以控制方块更新，但挖掘后要立即更新临近方块，
+        //  否则出现悬空方块等, v26.60 起还需要处理相邻方块更新历史
+        // GameMode::destroyBlock 完整处理挖掘，但生存模式存在挖掘校验，无法连锁，性能一般
+        block.playerDestroy(this->player_, pos);
+
+        auto& air = mc_utils::getDefaultBlockState("minecraft:air");
+        assert(air.getTypeName() == "minecraft:air");
+
+        this->blockSource_.setBlock(pos, air, 2, nullptr, blockChangeCtx_);
+
+        pendingUpdate_.emplace_back(pos, block, air);
     }
 
-    void flushWorldUpdate() {}
+    /**
+     * @brief 批边界补上 setBlock(flags=2) 阶段跳过的邻居更新。
+     * @note 保证液体/红石/附着方块正确响应。
+     */
+    inline void flushWorldUpdate() {
+        for (auto const& element : pendingUpdate_) {
+            FM_TRACE("flushWorldUpdate: " << element.dumpForDebug());
+            this->blockSource_.updateNeighborsAt(element.pos, element.history);
+        }
+        pendingUpdate_.clear();
+    }
 
     inline void onTaskCompleted(long long cpuTime) {
         Base::scheduleFinish([this, cpuTime] {
@@ -168,13 +218,14 @@ private:
         deductDamage_ = dist(rng);
     }
 
-    unsigned short const        blockId_;
-    RuntimeSingleBlockConfigPtr blockConfig_;
-    BlockChangeContext          blockChangeCtx_;
-    ll::event::EventBus&        eventBus_;
-    int const                   durability_;
-    int                         deductDamage_{0};
-    PreSearchData               preSearchBlocks_{}; // 两阶段交接：客户端预搜索确定的目标集合
+    unsigned short const                    blockId_;
+    RuntimeSingleBlockConfigPtr             blockConfig_;
+    BlockChangeContext                      blockChangeCtx_;
+    ll::event::EventBus&                    eventBus_;
+    int const                               durability_;
+    int                                     deductDamage_{0};
+    PreSearchData                           preSearchBlocks_{}; // 两阶段交接：客户端预搜索确定的目标集合
+    std::vector<ChainNeighborUpdateElement> pendingUpdate_{};   // 本批次已挖掘但尚未 updateNeighborsAt 的方块
 };
 
 

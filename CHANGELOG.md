@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.21.0] - 2026-11-05
 
-- adapt levilamina 26.60.x
+- 适配 levilamina 26.60.x
+- 修复客户端侧反复进出世界后可能的崩溃
 
 ## [0.20.0] - 2026-09-24
 

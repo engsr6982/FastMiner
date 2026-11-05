@@ -30,6 +30,8 @@ public:
     using PlatformServiceImpl = internal::ImplType<tag::PlatformServiceTag>::type;
     PlatformServiceImpl& getPlatformService() const;
 
+    MinerLauncher* getMinerLauncher() const;
+
     static_assert(std::is_final_v<PlatformServiceImpl>, "PlatformServiceImpl must be final");
 
 private:

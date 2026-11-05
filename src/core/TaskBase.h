@@ -137,7 +137,9 @@ public:
 
             // 任务结束（含打断）时清空残留的世界更新，防止悬空状态
             if constexpr (Derived::needsWorldFlush) {
-                self.flushWorldUpdate();
+                if (!isAborted()) { // 如果任务是被熔断的，跳过世界更新，避免空指针访问
+                    self.flushWorldUpdate();
+                }
             }
 
             if (canContinue()) {

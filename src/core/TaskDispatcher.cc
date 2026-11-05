@@ -24,10 +24,10 @@ void TaskDispatcher::onTaskFinished(TaskControl* task) { tasks_.erase(task->play
 
 void TaskDispatcher::shutdown() {
     for (auto& [_, task] : tasks_) {
-        task->interrupt();
+        task->abort();
     }
     for (auto& [t, h] : pending_) {
-        t->interrupt();
+        t->abort();
         while (!h.done()) {
             h.resume();
         }
