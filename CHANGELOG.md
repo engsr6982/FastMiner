@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.1] - 2026-11-07
+
+- fix client dependencies in tooth.json [#18] @ShrBox
+
 ## [0.21.0] - 2026-11-05
 
 - 适配 levilamina 26.60.x
